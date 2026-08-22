@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unframer — extract any website's code</title>
+<meta name="description" content="Convert any website into portable HTML, CSS and JavaScript you can host anywhere. Trackers and platform watermarks removed.">
+<style>
+  :root {
+    --ground:#f1f4f3; --surface:#fff; --surface-2:#e9eeec;
+    --ink:#101817; --ink-2:#3a4a47; --muted:#687874; --line:#d6deda;
+    --accent:#0b6f5e; --accent-ink:#fff; --warn:#a83e22;
+    --flag:#8a6212; --flag-bg:#f7ebd2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:#0b100f; --surface:#131b1a; --surface-2:#1b2523;
+      --ink:#e7eeec; --ink-2:#b6c5c1; --muted:#859893; --line:#243130;
+      --accent:#4fd0b4; --accent-ink:#06201b; --warn:#f0866a;
+      --flag:#e0b252; --flag-bg:#2a2110;
+    }
+  }
+  * { box-sizing:border-box }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:720px; margin:0 auto; padding:56px 24px 80px }
+  h1 { font-size:2.1rem; letter-spacing:-.03em; margin:0 0 8px }
+  .lede { color:var(--ink-2); margin:0 0 28px }
+  form { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:22px }
+  label { display:block; font-size:.82rem; font-weight:600; margin-bottom:6px }
+  input {
+    width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:8px;
+    background:var(--ground); color:var(--ink); font:inherit; font-size:.95rem;
+  }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+  .row { display:flex; gap:14px; flex-wrap:wrap; margin-top:16px }
+  .row > div { flex:1; min-width:160px }
+  button {
+    margin-top:20px; width:100%; padding:13px; border:0; border-radius:8px;
+    background:var(--accent); color:var(--accent-ink); font:inherit; font-weight:600; cursor:pointer;
+  }
+  button:disabled { opacity:.55; cursor:not-allowed }
+  .hint { font-size:.8rem; color:var(--muted); margin-top:6px }
+  #out { margin-top:22px; display:none }
+  #out.on { display:block }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px 20px }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:14px 0 }
+  .stat { background:var(--surface); padding:11px 13px }
+  .stat b { display:block; font-size:1.2rem; letter-spacing:-.02em; font-variant-numeric:tabular-nums }
+  .stat span { font-size:.68rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted) }
+  .err { color:var(--warn); font-weight:600 }
+  .note { border-left:3px solid var(--flag); background:var(--flag-bg);
+    border-radius:0 8px 8px 0; padding:14px 16px; margin-top:26px; font-size:.88rem }
+  .note b { display:block; margin-bottom:5px }
+  code { font-family:ui-monospace,Menlo,Consolas,monospace; background:var(--surface-2);
+    padding:1px 5px; border-radius:4px; font-size:.86em }
+  footer { margin-top:34px; font-size:.85rem; color:var(--muted) }
+  footer a { color:var(--accent) }
+  .spin { display:inline-block; width:13px; height:13px; border:2px solid currentColor;
+    border-right-color:transparent; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:7px }
+  @keyframes sp { to { transform:rotate(360deg) } }
+  @media (prefers-reduced-motion:reduce) { .spin { animation:none } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Unframer</h1>
+  <p class="lede">Turn any website into portable HTML, CSS and JavaScript you can host anywhere. Trackers and platform watermarks are stripped out.</p>
+
+  <form id="f">
+    <label for="url">Site URL</label>
+    <input id="url" type="url" required placeholder="https://example.com/" autocomplete="url">
+    <p class="hint">Export sites you own or are authorised to export.</p>
+
+    <div class="row">
+      <div>
+        <label for="pages">Pages</label>
+        <input id="pages" type="number" min="1" max="5" value="1">
+        <p class="hint">Up to 5 here. Unlimited when you run it yourself.</p>
+      </div>
+    </div>
+
+    <button id="go" type="submit">Extract code</button>
+  </form>
+
+  <div id="out"></div>
+
+  <div class="note">
+    <b>This hosted version is deliberately limited</b>
+    It runs on serverless functions, which stop after 60 seconds and cannot return
+    more than a few megabytes — so it links assets to their original host rather
+    than downloading them, and caps the page count.
+    <br><br>
+    For the complete export — every image, font and script downloaded, full animation
+    fidelity on Framer sites, and a preview server bundled in — run it locally.
+    It is one command and has no limits.
+  </div>
+
+  <footer>
+    Open source, MIT licensed &middot;
+    <a href="https://github.com/Niranjan266/unframer">github.com/Niranjan266/unframer</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var f = document.getElementById('f');
+  var go = document.getElementById('go');
+  var out = document.getElementById('out');
+
+  function card(inner) {
+    out.className = 'on';
+    out.innerHTML = '<div class="card">' + inner + '</div>';
+  }
+
+  function stat(v, l) {
+    return '<div class="stat"><b>' + v + '</b><span>' + l + '</span></div>';
+  }
+
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    go.disabled = true;
+    card('<span class="spin"></span>Extracting. This can take up to a minute.');
+
+    fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: document.getElementById('url').value,
+        maxPages: Number(document.getElementById('pages').value)
+      })
+    })
+    .then(function (res) {
+      var type = res.headers.get('content-type') || '';
+      if (!res.ok || type.indexOf('application/zip') === -1) {
+        return res.json().then(function (b) { throw new Error(b.error || 'The export failed.'); });
+      }
+      var pages = res.headers.get('X-Unframer-Pages') || '?';
+      var assets = res.headers.get('X-Unframer-Assets') || '?';
+      var removed = res.headers.get('X-Unframer-Removed') || '0';
+      return res.blob().then(function (blob) {
+        var host = 'site';
+        try { host = new URL(document.getElementById('url').value).hostname; } catch (err) {}
+
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = host + '.zip';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+
+        card(
+          '<b>Export complete.</b> Your download should have started.' +
+          '<div class="stats">' +
+            stat(pages, 'Pages') + stat(assets, 'Assets linked') +
+            stat(removed, 'Trackers removed') +
+            stat((blob.size / 1024).toFixed(0) + ' KB', 'Size') +
+          '</div>' +
+          'Unzip it and open <code>index.html</code>, or upload the folder to any static host.'
+        );
+        go.disabled = false;
+      });
+    })
+    .catch(function (err) {
+      card('<p class="err">' + err.message + '</p>');
+      go.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>

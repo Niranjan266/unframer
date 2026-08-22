@@ -28,3 +28,6 @@ verify-*/
 # Local editor settings
 .vscode/
 .idea/
+
+.vercel
+.env*
