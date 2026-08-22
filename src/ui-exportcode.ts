@@ -16,7 +16,7 @@ export const EXPORT_CODE_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Export code</title>
+<title>Extract &amp; export code</title>
 <style>
   :root {
     --ground:#f1f4f3; --surface:#fff; --surface-2:#e9eeec;
@@ -90,9 +90,9 @@ export const EXPORT_CODE_HTML = `<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <nav><a href="/">Quick export</a><a href="/exportcode" class="on">Export code</a></nav>
+  <nav><a href="/" class="on">Extract &amp; export code</a><a href="/quick">Lightweight export</a></nav>
 
-  <h1>Export code</h1>
+  <h1>Extract &amp; export code</h1>
   <p class="lede">Paste any site URL. You get every page and its complete front-end code &mdash; HTML, CSS, JavaScript, fonts and media &mdash; working the way it does live.</p>
 
   <div class="caps">

@@ -127,21 +127,28 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
 
     try {
       // --- UI ---------------------------------------------------------------
-      if (req.method === 'GET' && (path === '/' || path === '/index.html')) {
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(UI_HTML);
-        return;
-      }
-
-      if (req.method === 'GET' && (path === '/exportcode' || path === '/exportcode/')) {
+      // The full export is the landing page. It is what people actually want,
+      // and burying it behind a second tab made it look as though the tool
+      // could not do it at all.
+      if (
+        req.method === 'GET' &&
+        (path === '/' || path === '/index.html' || path === '/exportcode' || path === '/exportcode/')
+      ) {
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',
         });
         res.end(EXPORT_CODE_HTML);
+        return;
+      }
+
+      // The lighter, framework-free export keeps its own page.
+      if (req.method === 'GET' && (path === '/quick' || path === '/quick/')) {
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(UI_HTML);
         return;
       }
 

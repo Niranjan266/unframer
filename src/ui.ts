@@ -93,9 +93,9 @@ export const UI_HTML = `<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <nav><a href="/" class="on">Quick export</a><a href="/exportcode">Export code (any site)</a></nav>
-  <h1>Unframer</h1>
-  <p class="lede">Convert any site into portable HTML, CSS and JavaScript you can host anywhere. For full animations and interactions, use <a href="/exportcode" style="color:var(--accent)">Export code</a>.</p>
+  <nav><a href="/">Extract &amp; export code</a><a href="/quick" class="on">Lightweight export</a></nav>
+  <h1>Lightweight export</h1>
+  <p class="lede">A smaller, framework-free copy: no runtime, animations compiled to CSS where possible. For a complete working copy, use <a href="/" style="color:var(--accent)">Extract &amp; export code</a>.</p>
 
   <form id="form">
     <label for="url">Site URL</label>
