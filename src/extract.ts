@@ -30,6 +30,18 @@ export interface ExtractResult {
   report: ExtractReport;
 }
 
+/**
+ * Hook invoked with the parsed document just before serialisation.
+ *
+ * Multi-page concerns (link rewriting, canonical retargeting) need the DOM, and
+ * this lets them run without a second parse of a page that can be close to a
+ * megabyte. Anything the hook wants to report goes into `warnings`.
+ */
+export type DocumentHook = (
+  $: CheerioAPI,
+  warnings: string[],
+) => void;
+
 export class NotAFramerSiteError extends Error {
   constructor(public readonly signals: string[]) {
     super(
@@ -65,6 +77,7 @@ function injectProvenance($: CheerioAPI, report: ExtractReport): void {
 export function extract(
   html: string,
   options: Partial<ExtractOptions> = {},
+  onDocument?: DocumentHook,
 ): ExtractResult {
   const opts: ExtractOptions = { ...DEFAULT_OPTIONS, ...options };
   // Default (parse5) load: spec-correct parsing and serialisation, which
@@ -140,6 +153,9 @@ export function extract(
     warnings,
     sourceUrl: opts.baseUrl,
   };
+
+  // Multi-page concerns run last, once the document is otherwise final.
+  if (onDocument) onDocument($, warnings);
 
   injectProvenance($, report);
 
