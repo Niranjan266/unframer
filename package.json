@@ -1,16 +1,51 @@
 {
   "name": "unframer",
   "version": "0.1.0",
-  "description": "Convert a published Framer site into portable, framework-free HTML/CSS/JS",
+  "description": "Convert a published Framer site into portable, framework-free HTML, CSS and JavaScript you can host anywhere",
+  "keywords": [
+    "framer",
+    "framer-export",
+    "static-site",
+    "html-export",
+    "no-code",
+    "self-hosting",
+    "site-converter"
+  ],
+  "license": "MIT",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "unframer": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niranjan266/unframer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/niranjan266/unframer/issues"
+  },
+  "homepage": "https://github.com/niranjan266/unframer#readme",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
+    "serve": "tsx src/cli.ts serve",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
     "archiver": "^8.0.0",
