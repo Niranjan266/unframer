@@ -30,6 +30,7 @@ const KIND_DIR: Record<AssetRef['kind'], string> = {
   image: 'assets/images',
   font: 'assets/fonts',
   video: 'assets/media',
+  script: 'assets/runtime',
   other: 'assets/files',
 };
 
@@ -86,6 +87,12 @@ export function localNameFor(url: string, kind: AssetRef['kind'], contentType?: 
   }
 
   const rawBase = basename(pathname) || 'asset';
+
+  // Runtime modules keep their exact filename. They import each other by
+  // relative path — `./rolldown-runtime.DhnBybyj.mjs` — so appending our own
+  // hash silently breaks every one of those imports and the page never
+  // hydrates. Framer already content-hashes these names, so they are unique.
+  if (kind === 'script') return `${KIND_DIR[kind]}/${rawBase}`;
   let ext = extname(rawBase);
   let stem = ext ? rawBase.slice(0, -ext.length) : rawBase;
 

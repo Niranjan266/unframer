@@ -207,6 +207,36 @@ function stripDataIslands($: CheerioAPI, removals: RemovalRecord[]) {
   }
 }
 
+/**
+ * Remove code that calls back to the platform.
+ *
+ * Framer inlines a snippet that preloads `framer.com/edit/init.mjs` whenever a
+ * localStorage flag is set, to bring up its editor bar. On a self-hosted copy
+ * that is purely a request home, and it survives even in high-fidelity mode
+ * where the rest of the runtime is deliberately kept — so it is stripped
+ * separately from the runtime itself.
+ */
+function stripPhoneHome($: CheerioAPI, removals: RemovalRecord[]) {
+  const FINGERPRINTS = ['framer.com/edit/', '__framer_force_showing_editorbar'];
+
+  let n = 0;
+  $('script:not([src])').each((_, el) => {
+    const body = $(el).html() ?? '';
+    if (!body.trim()) return;
+    if (FINGERPRINTS.some((f) => body.includes(f))) {
+      $(el).remove();
+      n++;
+    }
+  });
+
+  // Any preload someone left pointing at the editor.
+  const links = $('link[href*="framer.com/edit"]');
+  const linkCount = links.length;
+  links.remove();
+
+  record(removals, 'phone-home', 'Framer editor bootstrap', n + linkCount);
+}
+
 /** Remove the platform watermark container and any leftover badge markup. */
 function stripBadge($: CheerioAPI, removals: RemovalRecord[]) {
   const container = $('#__framer-badge-container');
@@ -266,18 +296,40 @@ function stripFramerMetadata($: CheerioAPI, removals: RemovalRecord[]) {
  * bootstrap fingerprint matching still sees a coherent document, and badge CSS
  * is cleaned after the badge node itself.
  */
-export function stripAll($: CheerioAPI): StripResult {
+export function stripAll($: CheerioAPI, keepRuntime = false): StripResult {
   const removals: RemovalRecord[] = [];
   const warnings: string[] = [];
 
+  // Trackers and the watermark go in every mode — they are the point.
   stripFramerAnalytics($, removals);
   stripThirdPartyTrackers($, removals);
-  stripRuntime($, removals);
-  stripRuntimeBootstraps($, removals);
-  stripDataIslands($, removals);
+  stripPhoneHome($, removals);
+
+  // The runtime, its bootstraps and the data islands it reads are one unit.
+  // Removing any of them while keeping the others produces a page that tries
+  // to hydrate against data that is no longer there.
+  if (!keepRuntime) {
+    stripRuntime($, removals);
+    stripRuntimeBootstraps($, removals);
+    stripDataIslands($, removals);
+  }
+
   stripBadge($, removals);
   stripBadgeCss($, removals);
   stripFramerMetadata($, removals);
+
+  if (keepRuntime) {
+    // The badge is injected at runtime, so removing the node is not enough
+    // once the runtime is still running. Hide it by rule instead.
+    $('head').append(
+      '<style data-unframer="badge">#__framer-badge-container,.__framer-badge{display:none!important}</style>',
+    );
+    removals.push({
+      kind: 'watermark',
+      detail: 'Badge suppressed by rule (runtime kept)',
+      count: 1,
+    });
+  }
 
   // `#svg-templates` holds SVG defs referenced by <use> elsewhere in the page.
   // Removing it looks tempting because it is invisible, but it breaks icons.

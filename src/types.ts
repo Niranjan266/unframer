@@ -62,6 +62,16 @@ export interface ExtractOptions {
    * static.
    */
   interactions: boolean;
+  /**
+   * Keep Framer's own runtime bundle instead of stripping it.
+   *
+   * This is the high-fidelity mode: every animation, scroll effect, hover
+   * variant and responsive behaviour keeps working exactly as published,
+   * because the code that drives them is still there. Trackers and the
+   * watermark are still removed. The trade is that the output contains
+   * Framer's React bundle rather than being framework-free.
+   */
+  keepRuntime: boolean;
   /** Base URL of the source site, used to resolve relative links. */
   baseUrl?: string;
 }
@@ -71,6 +81,7 @@ export const DEFAULT_OPTIONS: ExtractOptions = {
   compileAnimations: true,
   reducedMotion: true,
   interactions: true,
+  keepRuntime: false,
 };
 
 /** One class of thing the stripper removed. */
@@ -82,7 +93,7 @@ export interface RemovalRecord {
 
 export interface AssetRef {
   url: string;
-  kind: 'image' | 'font' | 'video' | 'other';
+  kind: 'image' | 'font' | 'video' | 'script' | 'other';
 }
 
 export interface ExtractReport {
@@ -104,6 +115,8 @@ export interface ExtractReport {
   tickers: number;
   /** Bytes of shim JavaScript added. */
   shimBytes: number;
+  /** Framer runtime modules kept and localised (high-fidelity mode). */
+  runtimeModules: number;
   assets: AssetRef[];
   warnings: string[];
 }

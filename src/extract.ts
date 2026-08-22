@@ -101,7 +101,14 @@ export function extract(
   const warnings: string[] = [];
   let appearRulesEmitted = 0;
 
-  if (opts.compileAnimations && appearIds > 0) {
+  // High-fidelity mode: Framer's own runtime is staying, so it will drive every
+  // animation, reveal and ticker itself. Recompiling them here would put two
+  // systems on the same elements, fighting over transform and opacity.
+  if (opts.keepRuntime) {
+    warnings.push(
+      'Runtime kept: animations and interactions run exactly as published. The output includes the Framer bundle rather than being framework-free.',
+    );
+  } else if (opts.compileAnimations && appearIds > 0) {
     const compiled = compileAppearCss(appearSpec, breakpoints, opts.reducedMotion);
     injectCss($, compiled.css, 'appear');
     appearRulesEmitted = compiled.rulesEmitted;
@@ -119,7 +126,8 @@ export function extract(
   }
 
   // Safe to remove the inline pre-animation state now that CSS is in place.
-  const neutralized = animatedElements > 0 ? neutralizeInlineInitialState($) : 0;
+  const neutralized =
+    animatedElements > 0 && !opts.keepRuntime ? neutralizeInlineInitialState($) : 0;
 
   // --- interactions --------------------------------------------------------
   // Only a subset of hidden elements carry appear data. The rest are revealed
@@ -129,7 +137,7 @@ export function extract(
   let tickers = 0;
   let shimSize = 0;
 
-  if (opts.interactions) {
+  if (opts.interactions && !opts.keepRuntime) {
     // Tickers first: their track is hidden inline too, and the reveal pass
     // would otherwise claim it and leave the ticker visible but motionless.
     const tickerResult = reconstructTickers($);
@@ -141,7 +149,7 @@ export function extract(
     warnings.push(...tickerResult.warnings);
 
     injectCss($, [tickerResult.css, revealResult.css].filter(Boolean).join('\n'), 'interactions');
-  } else {
+  } else if (!opts.keepRuntime) {
     // Not reconstructing, but nothing may be left invisible either.
     injectCss(
       $,
@@ -151,13 +159,13 @@ export function extract(
   }
 
   // --- strip ---------------------------------------------------------------
-  const { removals, warnings: stripWarnings } = stripAll($);
+  const { removals, warnings: stripWarnings } = stripAll($, opts.keepRuntime);
   warnings.push(...stripWarnings);
 
   // Shim goes in after the strip pass so it cannot be swept up by it.
   // The head half must be synchronous and first, or hidden elements paint
   // visible for a frame before the class lands.
-  if (opts.interactions && $(`[${REVEAL_ATTR}]`).length > 0) {
+  if (opts.interactions && !opts.keepRuntime && $(`[${REVEAL_ATTR}]`).length > 0) {
     $('head').prepend(`<script data-unframer="shim-head">${HEAD_SHIM}</script>`);
     $('body').append(`<script data-unframer="shim">${BODY_SHIM}</script>`);
     shimSize = shimBytes();
@@ -172,7 +180,7 @@ export function extract(
       count: protocolFixes,
     });
   }
-  const assets = inventoryAssets($);
+  const assets = inventoryAssets($, opts.keepRuntime);
 
   // Offline localisation happens in the multi-page orchestrator, which is the
   // only layer that sees the whole site and can download each asset once.
@@ -191,6 +199,9 @@ export function extract(
     revealGroups,
     tickers,
     shimBytes: shimSize,
+    runtimeModules: opts.keepRuntime
+      ? $('script[src$=".mjs"], link[rel="modulepreload"]').length
+      : 0,
     assets,
     warnings,
     sourceUrl: opts.baseUrl,

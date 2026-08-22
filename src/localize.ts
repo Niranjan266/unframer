@@ -68,7 +68,7 @@ export function localizeAssets(
   rewriteAttr('img[src], video[src], audio[src], source[src], script[src]', 'src');
   rewriteAttr('video[poster]', 'poster');
   rewriteAttr(
-    'link[rel="icon"], link[rel="apple-touch-icon"], link[rel="stylesheet"], link[rel="preload"]',
+    'link[rel="icon"], link[rel="apple-touch-icon"], link[rel="stylesheet"], link[rel="preload"], link[rel="modulepreload"]',
     'href',
   );
 

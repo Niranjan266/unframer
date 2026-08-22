@@ -38,6 +38,8 @@ export interface SiteExportOptions extends DiscoverOptions {
   outDir: string;
   assetMode?: AssetMode;
   compileAnimations?: boolean;
+  /** Keep Framer's runtime for full-fidelity animation and interaction. */
+  keepRuntime?: boolean;
   /** Public URL the export will live at, used for canonical/og:url and sitemap. */
   baseUrl?: string;
   onProgress?: (done: number, total: number, route: string, ok: boolean) => void;
@@ -115,7 +117,7 @@ export async function exportSite(
   for (const route of discovery.routes) {
     const html = pageHtml.get(route.path);
     if (!html) continue;
-    for (const asset of inventoryAssets(cheerio.load(html))) {
+    for (const asset of inventoryAssets(cheerio.load(html), options.keepRuntime ?? false)) {
       if (!allAssets.has(asset.url)) allAssets.set(asset.url, asset);
     }
   }
@@ -147,6 +149,7 @@ export async function exportSite(
           {
             assetMode,
             compileAnimations: options.compileAnimations ?? true,
+            keepRuntime: options.keepRuntime ?? false,
             baseUrl: route.url,
           },
           ($, pageWarnings) => {

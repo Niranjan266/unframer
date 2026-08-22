@@ -21,8 +21,10 @@ export const META_IMAGE_SELECTOR =
 const FONT_RE = /\.(woff2?|ttf|otf|eot)(\?|$)/i;
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)(\?|$)/i;
 const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp|avif)(\?|$)/i;
+const SCRIPT_RE = /\.mjs(\?|$)/i;
 
 function classify(url: string): AssetRef['kind'] {
+  if (SCRIPT_RE.test(url)) return 'script';
   if (FONT_RE.test(url)) return 'font';
   if (VIDEO_RE.test(url)) return 'video';
   if (IMAGE_RE.test(url)) return 'image';
@@ -54,7 +56,7 @@ export function extractCssUrls(css: string): string[] {
  * Inventory every asset the document references: img src/srcset, source
  * srcset, video, link href, and url() inside inline styles and stylesheets.
  */
-export function inventoryAssets($: CheerioAPI): AssetRef[] {
+export function inventoryAssets($: CheerioAPI, includeRuntime = false): AssetRef[] {
   const seen = new Set<string>();
   const assets: AssetRef[] = [];
 
@@ -82,6 +84,17 @@ export function inventoryAssets($: CheerioAPI): AssetRef[] {
   // rather than a src, and leaving them behind means the export still phones
   // home every time a link to it is shared.
   $(META_IMAGE_SELECTOR).each((_, el) => add($(el).attr('content')));
+
+  // Framer's runtime modules, only when we are keeping them. They import each
+  // other by relative path, so downloading the set into one directory is enough
+  // for hydration to work offline.
+  if (includeRuntime) {
+    $('script[src]').each((_, el) => {
+      const src = $(el).attr('src');
+      if (src && SCRIPT_RE.test(src)) add(src);
+    });
+    $('link[rel="modulepreload"][href]').each((_, el) => add($(el).attr('href')));
+  }
 
   $('style').each((_, el) => {
     const css = $(el).html() ?? '';

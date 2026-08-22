@@ -29,6 +29,7 @@ interface Args {
   maxDepth: number;
   concurrency: number;
   pkg: boolean;
+  keepRuntime: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -44,6 +45,7 @@ function parseArgs(argv: string[]): Args {
     maxDepth: 3,
     concurrency: 4,
     pkg: false,
+    keepRuntime: false,
   };
 
   const int = (v: string | undefined, fallback: number) => {
@@ -65,6 +67,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--concurrency') args.concurrency = int(argv[++i], 4);
     else if (a === '--json') args.json = true;
     else if (a === '--package' || a === '--zip') args.pkg = true;
+    else if (a === '--keep-runtime' || a === '--full') args.keepRuntime = true;
     else if (!a.startsWith('-')) args.input = a;
   }
   return args;
@@ -86,6 +89,7 @@ Options
       --concurrency <n>  Parallel fetches (default: 4 — the CDN throttles)
       --offline          Download every asset for a fully portable package
       --no-animations    Skip animation compilation; force final visible state
+      --keep-runtime     Keep Framer's runtime for full animation fidelity
       --package          Also write host configs and a deployable ZIP
       --json             Print the report as JSON
   -h, --help             Show this help
@@ -129,6 +133,7 @@ function printPageReport(report: ExtractReport): void {
   console.log(`  Scroll reveals    ${report.scrollReveals} element(s) → ${report.revealGroups} rule(s)`);
   console.log(`  Tickers           ${report.tickers}`);
   if (report.shimBytes > 0) console.log(`  Shim              ${report.shimBytes} B`);
+  if (report.runtimeModules > 0) console.log(`  Runtime modules   ${report.runtimeModules} (full fidelity)`);
   console.log(`  Assets referenced ${report.assets.length}`);
   console.log(`  Artifacts removed ${totalRemoved}`);
 
@@ -203,6 +208,7 @@ async function runSingle(args: Args): Promise<void> {
     result = extract(html, {
       assetMode: args.assetMode,
       compileAnimations: args.compileAnimations,
+      keepRuntime: args.keepRuntime,
       baseUrl,
     });
   } catch (err) {
@@ -239,6 +245,7 @@ async function runSite(args: Args): Promise<void> {
     outDir: args.out,
     assetMode: args.assetMode,
     compileAnimations: args.compileAnimations,
+    keepRuntime: args.keepRuntime,
     baseUrl: args.baseUrl,
     maxPages: args.maxPages,
     maxDepth: args.maxDepth,
