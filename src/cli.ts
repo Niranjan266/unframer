@@ -81,7 +81,7 @@ Options
       --max-pages <n>    Page cap for discovery (default: 100)
       --max-depth <n>    Crawl depth (default: 3)
       --concurrency <n>  Parallel fetches (default: 4 — the CDN throttles)
-      --offline          Download assets locally (phase 03 — not yet implemented)
+      --offline          Download every asset for a fully portable package
       --no-animations    Skip animation compilation; force final visible state
       --json             Print the report as JSON
   -h, --help             Show this help
@@ -126,9 +126,18 @@ function printSiteReport(report: SiteReport): void {
   console.log('  Export complete');
   console.log('  ' + '─'.repeat(52));
   console.log(`  Pages             ${report.pagesExported} exported, ${report.pagesFailed} failed`);
-  console.log(`  Size              ${fmtBytes(report.totalBytesBefore)} → ${fmtBytes(report.totalBytesAfter)}`);
+  console.log(`  HTML              ${fmtBytes(report.totalBytesBefore)} → ${fmtBytes(report.totalBytesAfter)}`);
   console.log(`  Animation rules   ${report.totalAnimationRules}`);
-  console.log(`  Unique assets     ${report.uniqueAssets}`);
+  console.log(`  Assets            ${report.assetMode}`);
+  if (report.assetMode === 'offline') {
+    console.log(
+      `                    ${report.assetsDownloaded}/${report.uniqueAssets} downloaded (${fmtBytes(report.assetBytes)})${
+        report.assetsFailed > 0 ? `, ${report.assetsFailed} failed` : ''
+      }`,
+    );
+  } else {
+    console.log(`                    ${report.uniqueAssets} referenced`);
+  }
   console.log(`  Artifacts removed ${report.totalArtifactsRemoved}`);
   if (report.formsFound > 0) console.log(`  Forms needing an endpoint  ${report.formsFound}`);
 
@@ -217,6 +226,13 @@ async function runSite(args: Args): Promise<void> {
     onProgress: (done, total, route, ok) => {
       if (!args.json) {
         console.log(`  [${String(done).padStart(2)}/${total}] ${ok ? '✓' : '✗'} ${route}`);
+      }
+    },
+    onAssetProgress: (done, total, _url, ok) => {
+      // One line per 25 assets keeps a 400-asset site from flooding the terminal.
+      if (args.json) return;
+      if (!ok || done === total || done % 25 === 0) {
+        console.log(`  assets [${done}/${total}]${ok ? '' : ' — failed, keeping CDN URL'}`);
       }
     },
   });
