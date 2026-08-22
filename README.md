@@ -2,7 +2,9 @@
 
 Converts a published Framer site into portable, framework-free HTML/CSS that runs on any static host.
 
-**Status: Phase 06 complete** — whole-site export, self-contained with `--offline`, interactions reconstructed, verified against the live original, and served through a web UI and API.
+Open source under the [MIT licence](LICENSE) — run it yourself, host it for others, or use it as a library.
+
+**Status: feature complete.** Whole-site export, self-contained with `--offline`, interactions reconstructed, verified against the live original, and served through a web UI and API. No accounts, no limits, no paywall.
 
 ```bash
 npm install
@@ -221,10 +223,6 @@ netlify.toml   vercel.json   _headers
 
 The cache headers are not boilerplate. Asset filenames carry a hash of their source URL, so an asset cannot change content without changing name — which makes `immutable` genuinely correct for `assets/`. HTML has no such guarantee and must revalidate, or a deploy strands visitors on a stale page pointing at assets that no longer exist.
 
-### Not built
-
-**Payments.** There is no Stripe integration — wiring real payment processing needs live credentials and an account, and a half-built billing path is worse than none. The queue and job model leave a clean seam for an entitlement check before `enqueue`.
-
 ## Tests
 
 ```bash
@@ -250,6 +248,34 @@ Only entry animations are declarative. Scroll reveals, hover variants, tickers a
 
 `--offline` is accepted but not yet implemented; it warns and falls back to hotlinking rather than silently producing a broken package.
 
+## Self-hosting
+
+```bash
+docker build -t unframer .
+docker run -p 3000:3000 unframer
+```
+
+Or without Docker:
+
+```bash
+npm ci && npm run build
+node dist/cli.js serve --port 3000
+```
+
+The server has no database and no state beyond job artifacts in a temp directory, so it scales by running more of it.
+
+**Read [SECURITY.md](SECURITY.md) before exposing it publicly.** It fetches URLs supplied by whoever can reach it. The SSRF guard blocks private, loopback and cloud-metadata addresses, but it does not rate-limit — put authentication or a proxy in front of a public instance.
+
+## Contributing
+
+Issues and pull requests welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout and, more usefully, the traps that have already cost real debugging time here — invisible elements, breakpoint-scoped animations, and why a browser tab that is not compositing will lie to you about animation state.
+
+CI runs typecheck and the full suite on Node 20 and 22 against a committed synthetic fixture, plus a weekly live smoke test that catches Framer changing its build output before you find out from a user.
+
 ## Scope
 
-Intended for exporting sites you own or are authorised to export. Framer's badge and hosting terms are contractual, so any hosted version of this should verify domain ownership (DNS `TXT` or a meta token) before a paid export.
+Intended for exporting sites you own or are authorised to export. Framer's badge and hosting terms are contractual — if you run a public instance, consider verifying domain ownership (a DNS `TXT` record or a meta token) before exporting on someone's behalf.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

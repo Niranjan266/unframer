@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # The strip list is coupled to Framer's build output, so a weekly run against
+  # a live site catches a format change before a user does.
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  test:
+    name: Test on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        # The captured third-party fixtures are gitignored, so these run against
+        # the committed synthetic fixture. It is authored to the same shape and
+        # exercises the whole pipeline.
+        run: npm test
+
+  smoke:
+    name: Live smoke test
+    runs-on: ubuntu-latest
+    # Only on a schedule or manual run — a PR should not depend on a third-party
+    # site being up, and a red build nobody caused teaches people to ignore CI.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Export a live Framer site
+        run: npx tsx src/cli.ts https://framer-template.framer.website/ --out smoke --max-pages 2
+
+      - name: Verify the export against the original
+        run: |
+          npx playwright install --with-deps chromium
+          npx tsx src/cli.ts verify https://framer-template.framer.website/ --export smoke --no-diff
