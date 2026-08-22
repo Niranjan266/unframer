@@ -156,6 +156,14 @@ export const UI_HTML = `<!doctype html>
     return '<div class="stat"><b>' + value + '</b><span>' + label + '</span></div>';
   }
 
+  // A hotlinked two-page export is around 30 KB, which reads as "0.0 MB" if
+  // megabytes are the only unit on offer.
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+
   function render(job) {
     dot.className = 'dot ' + job.status;
     statusText.textContent = {
@@ -185,7 +193,7 @@ export const UI_HTML = `<!doctype html>
     }
 
     if (job.status === 'done' && job.downloadUrl) {
-      var size = job.zipBytes ? ' (' + (job.zipBytes / 1048576).toFixed(1) + ' MB)' : '';
+      var size = job.zipBytes ? ' (' + fmtBytes(job.zipBytes) + ')' : '';
       action.innerHTML = '<a class="download" href="' + job.downloadUrl + '">Download ZIP' + size + '</a>';
       submit.disabled = false;
     }
