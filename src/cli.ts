@@ -28,6 +28,7 @@ interface Args {
   maxPages: number;
   maxDepth: number;
   concurrency: number;
+  pkg: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -42,6 +43,7 @@ function parseArgs(argv: string[]): Args {
     maxPages: 100,
     maxDepth: 3,
     concurrency: 4,
+    pkg: false,
   };
 
   const int = (v: string | undefined, fallback: number) => {
@@ -62,6 +64,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--max-depth') args.maxDepth = int(argv[++i], 3);
     else if (a === '--concurrency') args.concurrency = int(argv[++i], 4);
     else if (a === '--json') args.json = true;
+    else if (a === '--package' || a === '--zip') args.pkg = true;
     else if (!a.startsWith('-')) args.input = a;
   }
   return args;
@@ -83,8 +86,12 @@ Options
       --concurrency <n>  Parallel fetches (default: 4 — the CDN throttles)
       --offline          Download every asset for a fully portable package
       --no-animations    Skip animation compilation; force final visible state
+      --package          Also write host configs and a deployable ZIP
       --json             Print the report as JSON
   -h, --help             Show this help
+
+Run the web UI and API
+  unframer serve [--port 3000] [--concurrency 1]
 
 Verify an export against the live original
   unframer verify <original-url> --export <dir> [options]
@@ -251,11 +258,23 @@ async function runSite(args: Args): Promise<void> {
     },
   });
 
-  if (args.json) console.log(JSON.stringify(report, null, 2));
+  let packaged: { configs: string[]; zipPath: string; zipBytes: number } | undefined;
+  if (args.pkg && report.pagesExported > 0) {
+    const { packageExport } = await import('./package.js');
+    const zipTarget = `${resolve(args.out)}.zip`;
+    const { configs, zip } = await packageExport(resolve(args.out), zipTarget);
+    packaged = { configs, zipPath: zip.path, zipBytes: zip.bytes };
+  }
+
+  if (args.json) console.log(JSON.stringify({ ...report, packaged }, null, 2));
   else {
     printSiteReport(report);
     console.log('');
     console.log(`  Written to ${resolve(args.out)}`);
+    if (packaged) {
+      console.log(`  Host configs  ${packaged.configs.join(', ')}`);
+      console.log(`  ZIP           ${packaged.zipPath} (${fmtBytes(packaged.zipBytes)})`);
+    }
     console.log('');
   }
 
@@ -396,11 +415,40 @@ async function runVerify(argv: string[]): Promise<void> {
   if (!report.pass || !validation.pass) process.exit(4);
 }
 
+async function runServe(argv: string[]): Promise<void> {
+  const { startServer } = await import('./server.js');
+
+  let port = 3000;
+  let concurrency = 1;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--port' || argv[i] === '-p') port = Number(argv[++i]) || 3000;
+    else if (argv[i] === '--concurrency') concurrency = Number(argv[++i]) || 1;
+  }
+
+  const server = await startServer({ port, concurrency });
+  console.log('');
+  console.log(`  Unframer server running at ${server.url}`);
+  console.log('  Press Ctrl+C to stop.');
+  console.log('');
+
+  const shutdown = () => {
+    console.log('\n  Shutting down…');
+    void server.close().then(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
   if (rawArgs[0] === 'verify') {
     await runVerify(rawArgs.slice(1));
+    return;
+  }
+
+  if (rawArgs[0] === 'serve') {
+    await runServe(rawArgs.slice(1));
     return;
   }
 

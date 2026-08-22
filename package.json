@@ -13,10 +13,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "cheerio": "^1.0.0",
     "postcss": "^8.4.47"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/node": "^22.7.5",
     "@types/pngjs": "^6.0.5",
     "html-validate": "^9.7.1",

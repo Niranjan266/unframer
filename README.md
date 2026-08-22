@@ -2,7 +2,7 @@
 
 Converts a published Framer site into portable, framework-free HTML/CSS that runs on any static host.
 
-**Status: Phase 05 complete** — whole-site export, self-contained with `--offline`, interactions reconstructed, and an automated harness that verifies the result against the live original.
+**Status: Phase 06 complete** — whole-site export, self-contained with `--offline`, interactions reconstructed, verified against the live original, and served through a web UI and API.
 
 ```bash
 npm install
@@ -184,13 +184,54 @@ Three more traps were found while building the harness itself, each of which pro
 - Settling for 150 ms against a 700 ms transition measured elements mid-fade and reported an 80% content loss that did not exist. Sleeping longer only makes that rarer; finishing the animations removes it.
 - `finish()` throws on infinite effects, so the ticker crashed the check.
 
+## Web UI and API
+
+```bash
+npx tsx src/cli.ts serve --port 3000
+```
+
+Paste a URL, watch progress stream in, download a deployable ZIP.
+
+| Route | |
+|---|---|
+| `POST /api/jobs` | Queue an export; returns a job |
+| `GET /api/jobs/:id` | Job state |
+| `GET /api/jobs/:id/events` | Progress as server-sent events |
+| `GET /api/jobs/:id/download` | The packaged ZIP |
+
+Node's own `http` module and a single inline HTML document — no framework, no build step, and no external requests. It would be a poor look for a tool whose purpose is removing third-party dependencies from a page to then load a CDN framework of its own.
+
+The queue is in-process rather than BullMQ on Redis: an export is one bounded task measured in seconds, and requiring Redis before you can convert a site is the wrong trade. Concurrency is capped, because each job already runs its own bounded fetch pool and overlapping them multiplies out into the CDN throttling phase 03 exists to avoid.
+
+### SSRF protection
+
+The server fetches a URL supplied by whoever is using it. Unguarded, that is a request forwarder into the host's private network — point it at `http://169.254.169.254/` and it reads cloud instance credentials.
+
+`assertPublicUrl` **resolves** the hostname and rejects private, loopback, link-local and reserved ranges. Resolution is the part that matters: checking the literal hostname would miss a public DNS name deliberately pointed at `127.0.0.1`.
+
+Verified against loopback, private ranges, cloud metadata, IPv6 loopback and non-HTTP schemes — all six rejected with a clear reason.
+
+## Packaging
+
+`--package` writes host configuration and a ZIP:
+
+```
+netlify.toml   vercel.json   _headers
+```
+
+The cache headers are not boilerplate. Asset filenames carry a hash of their source URL, so an asset cannot change content without changing name — which makes `immutable` genuinely correct for `assets/`. HTML has no such guarantee and must revalidate, or a deploy strands visitors on a stale page pointing at assets that no longer exist.
+
+### Not built
+
+**Payments.** There is no Stripe integration — wiring real payment processing needs live credentials and an account, and a half-built billing path is worse than none. The queue and job model leave a clean seam for an entitlement check before `enqueue`.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-183 tests: unit coverage of the compiler, easing, breakpoint, route, link, asset-localisation, interaction, serving and validation logic, plus golden-file assertions against four real captured Framer pages.
+199 tests: unit coverage of the compiler, easing, breakpoint, route, link, asset-localisation, interaction, serving, validation, queue, packaging and SSRF logic, plus golden-file assertions against four real captured Framer pages.
 
 The most important of those asserts that **no element is left hidden by an inline style** — checked across every element, not just animated ones. That is the regression that shipped once.
 
@@ -203,7 +244,7 @@ The most important of those asserts that **no element is left hidden by an inlin
 | 03 | Offline assets: throttled downloader, `srcset` variants, fonts | **done** |
 | 04 | Interaction shim: scroll reveals, tickers | **done** |
 | 05 | Verification harness: Playwright, visual diff, HTML validation | **done** |
-| 06 | Product surface: queue, UI, packaging | next |
+| 06 | Product surface: queue, web UI, API, packaging | **done** |
 
 Only entry animations are declarative. Scroll reveals, hover variants, tickers and accordions live inside the compiled React bundle and must be reconstructed from DOM signatures — that is phase 04, and the highest-risk part of the project.
 
