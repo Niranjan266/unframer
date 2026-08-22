@@ -24,6 +24,9 @@ import {
 } from './appear.js';
 import { stripAll } from './strip.js';
 import { inventoryAssets, normalizeProtocolRelative } from './assets.js';
+import { extractScrollReveals, REVEAL_ATTR } from './reveal.js';
+import { reconstructTickers } from './ticker.js';
+import { HEAD_SHIM, BODY_SHIM, shimBytes } from './shim.js';
 
 export interface ExtractResult {
   html: string;
@@ -118,9 +121,47 @@ export function extract(
   // Safe to remove the inline pre-animation state now that CSS is in place.
   const neutralized = animatedElements > 0 ? neutralizeInlineInitialState($) : 0;
 
+  // --- interactions --------------------------------------------------------
+  // Only a subset of hidden elements carry appear data. The rest are revealed
+  // by Framer's runtime, so without this pass they stay invisible forever.
+  let scrollReveals = 0;
+  let revealGroups = 0;
+  let tickers = 0;
+  let shimSize = 0;
+
+  if (opts.interactions) {
+    // Tickers first: their track is hidden inline too, and the reveal pass
+    // would otherwise claim it and leave the ticker visible but motionless.
+    const tickerResult = reconstructTickers($);
+    const revealResult = extractScrollReveals($);
+
+    tickers = tickerResult.tickers;
+    scrollReveals = revealResult.elements;
+    revealGroups = revealResult.groups;
+    warnings.push(...tickerResult.warnings);
+
+    injectCss($, [tickerResult.css, revealResult.css].filter(Boolean).join('\n'), 'interactions');
+  } else {
+    // Not reconstructing, but nothing may be left invisible either.
+    injectCss(
+      $,
+      `[style*="opacity:0"]{opacity:1!important}`,
+      'interactions-disabled',
+    );
+  }
+
   // --- strip ---------------------------------------------------------------
   const { removals, warnings: stripWarnings } = stripAll($);
   warnings.push(...stripWarnings);
+
+  // Shim goes in after the strip pass so it cannot be swept up by it.
+  // The head half must be synchronous and first, or hidden elements paint
+  // visible for a frame before the class lands.
+  if (opts.interactions && $(`[${REVEAL_ATTR}]`).length > 0) {
+    $('head').prepend(`<script data-unframer="shim-head">${HEAD_SHIM}</script>`);
+    $('body').append(`<script data-unframer="shim">${BODY_SHIM}</script>`);
+    shimSize = shimBytes();
+  }
 
   // --- assets --------------------------------------------------------------
   const protocolFixes = normalizeProtocolRelative($);
@@ -146,6 +187,10 @@ export function extract(
     appearIds,
     appearRulesEmitted,
     animatedElements: neutralized,
+    scrollReveals,
+    revealGroups,
+    tickers,
+    shimBytes: shimSize,
     assets,
     warnings,
     sourceUrl: opts.baseUrl,

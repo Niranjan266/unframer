@@ -2,7 +2,7 @@
 
 Converts a published Framer site into portable, framework-free HTML/CSS that runs on any static host.
 
-**Status: Phase 03 complete** — whole-site export, fully self-contained with `--offline`.
+**Status: Phase 04 complete** — whole-site export, self-contained with `--offline`, interactions reconstructed.
 
 ```bash
 npm install
@@ -90,6 +90,30 @@ Four details carry most of the risk here:
 
 Anything that fails to download keeps its original URL and is reported. A hotlinked asset still renders; a rewritten-but-missing one does not.
 
+## Interactions
+
+Entry animations ship as declarative JSON, but **most hidden elements do not**. Framer server-renders a much larger set with an inline `opacity:0` that only its React runtime reveals — and only a subset of those carry an appear id.
+
+> **This shipped as a bug once.** `framer.university` has 325 such elements and *zero* appear ids. The export left 155 of them permanently invisible, hiding 4,557 characters — more text than the 3,943 that were visible, including the entire navigation. The test suite passed clean because every invisibility assertion was scoped to `[data-framer-appear-id]`.
+
+Two reconstructions now run, in this order:
+
+**Tickers first.** `li.ticker-item` is a stable Framer class. The track is duplicated so it can translate by exactly half its own width and land where it started — offset by `-50% - gap/2`, since the two halves are separated by one extra gap. Getting that wrong produces a visible stutter every cycle. Speed and direction are *not* encoded in the page, so both are defaults and the report says so.
+
+**Scroll reveals second** — the ticker track is hidden inline too, so if the reveal pass claimed it first the ticker would end up visible but motionless. Each element's inline hidden state is lifted into a deduplicated CSS rule (310 elements → 5 rules on framer.university) and revealed with an `IntersectionObserver`.
+
+### The safety property
+
+Every hidden rule is scoped under `.uf-js`, a class set by a synchronous inline head script. If scripting is off or the shim fails to parse, the class is never added and **the page renders fully visible**. The failure mode is "no animation", never "invisible page".
+
+Verified with the class removed: 154 rendered reveal elements, zero hidden, zero trapped text.
+
+The shim is ~1.6 KB, dependency-free. Entry animations and tickers need no JavaScript at all.
+
+### Not reconstructed
+
+Hover variants, accordions, carousels and scroll-linked parallax remain in the compiled bundle with no reliable DOM signature — `data-framer-component-type` only ever contains `RichTextContainer` and `SVG`, so there is nothing honest to key off. They are left static rather than guessed at.
+
 ## The trap this project exists to avoid
 
 Framer writes each animated element's initial state inline:
@@ -114,12 +138,17 @@ Framer drives entry animations with Motion springs (`duration` + `bounce`). Rath
 
 ## Verifying an export
 
-Two traps make naive verification report false failures. Both are encoded in `src/verify.ts`:
+Five traps make naive verification report false results — three false failures, one false pass, one crash. All are encoded in `src/verify.ts`:
 
 1. **A non-compositing tab never advances the document timeline.** Animations report `playState: "running"` with `currentTime: 0` indefinitely. Never assert on wall-clock waits — drive them with `Animation.finish()`.
-2. **Only rendered elements count.** Framer emits every responsive variant into the DOM and hides the inactive ones with `display:none`. Those legitimately sit at their initial state; asserting over all of them reports false failures.
+2. **Only rendered elements count.** Framer emits every responsive variant into the DOM and hides the inactive ones with `display:none`. Those legitimately sit at their initial state.
+3. **Reveal *before* finishing animations.** Adding `.uf-in` starts a CSS transition, and a transition started *after* `finish()` freezes at its "from" value in a non-compositing tab — reporting every revealed element as still hidden. Order is load-bearing.
+4. **`finish()` throws on infinite effects.** The ticker marquee is infinite, so an unguarded call crashes the whole check on any page with a ticker.
+5. **Scoping to `[data-framer-appear-id]` gives a false pass** — the bug described above. Walk every rendered element, and measure *trapped text*, because "no element reports opacity 0" is necessary but not sufficient for "the page is readable".
 
-Verified manually at 1512 / 1280 / 900 / 390 px against `framer-template`: zero stuck elements, zero broken images, zero external scripts, zero badge nodes, zero tracker requests.
+The threshold matters too: elements below `opacity: 0.05` **containing text** are failures. Framer legitimately uses partial opacity for dimmed decoration and fully transparent zero-size elements as scroll triggers (one is literally named `Trigger`), so flagging everything under 1 reports design intent as breakage.
+
+Verified at 1512 / 900 / 390 px against `framer.university` (the 887 KB page that exposed the bug) and `novo` (3 tickers): zero elements stuck with text, zero trapped characters, zero broken images, zero external scripts, zero badge nodes, zero tracker requests — and all three tickers animating with track widths far exceeding their containers.
 
 ## Tests
 
@@ -127,7 +156,9 @@ Verified manually at 1512 / 1280 / 900 / 390 px against `framer-template`: zero 
 npm test
 ```
 
-126 tests: unit coverage of the compiler, easing, breakpoint, route, link and asset-localisation logic, plus golden-file assertions against four real captured Framer pages.
+170 tests: unit coverage of the compiler, easing, breakpoint, route, link, asset-localisation and interaction logic, plus golden-file assertions against four real captured Framer pages.
+
+The most important of those asserts that **no element is left hidden by an inline style** — checked across every element, not just animated ones. That is the regression that shipped once.
 
 ## Roadmap
 
@@ -136,8 +167,8 @@ npm test
 | 01 | Single-page export, strip pipeline, animation compiler | **done** |
 | 02 | Multi-page: sitemap/crawl discovery, link rewriting | **done** |
 | 03 | Offline assets: throttled downloader, `srcset` variants, fonts | **done** |
-| 04 | Interaction shim: scroll reveals, hover, tickers, accordions | next |
-| 05 | Verification harness: Playwright, visual diff, W3C, Lighthouse | |
+| 04 | Interaction shim: scroll reveals, tickers | **done** |
+| 05 | Verification harness: Playwright, visual diff, W3C, Lighthouse | next |
 | 06 | Product surface: queue, UI, packaging | |
 
 Only entry animations are declarative. Scroll reveals, hover variants, tickers and accordions live inside the compiled React bundle and must be reconstructed from DOM signatures — that is phase 04, and the highest-risk part of the project.
