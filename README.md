@@ -6,6 +6,17 @@ Open source under the [MIT licence](LICENSE) — run it yourself, host it for ot
 
 **Status: feature complete.** Whole-site export, self-contained with `--offline`, interactions reconstructed, verified against the live original, and served through a web UI and API. No accounts, no limits, no paywall.
 
+**Windows:** double-click `unframer.bat`. It checks Node, installs dependencies on first run, starts the web UI and opens your browser. You can also pass it a URL to export straight to `.\out`:
+
+```
+unframer.bat                                 start the web UI
+unframer.bat https://site.framer.website/    export a site to .\out
+unframer.bat verify https://site.../         check .\out against the original
+unframer.bat test                            run the test suite
+```
+
+**Any platform:**
+
 ```bash
 npm install
 npx tsx src/cli.ts https://your-site.framer.website/ --out dist

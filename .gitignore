@@ -11,4 +11,4 @@ test/fixtures/*.html
 Thumbs.db
 
 # Verification output
-verify-diffs/
+verify-*/
