@@ -27,6 +27,7 @@ import { inventoryAssets, normalizeProtocolRelative } from './assets.js';
 import { extractScrollReveals, REVEAL_ATTR } from './reveal.js';
 import { reconstructTickers } from './ticker.js';
 import { HEAD_SHIM, BODY_SHIM, shimBytes } from './shim.js';
+import { RESCUE_SCRIPT, RESCUE_CSS, rescueBytes } from './rescue.js';
 
 export interface ExtractResult {
   html: string;
@@ -111,6 +112,19 @@ export function extract(
       });
     }
 
+    // Content rescue. A site whose JavaScript reveals its own text can fail to
+    // do so once exported, leaving the page laid out correctly but unreadable.
+    // The shim does nothing when the site's own reveal works.
+    let rescueSize = 0;
+    if (opts.interactions) {
+      injectCss($, RESCUE_CSS, 'rescue');
+      $('body').append(`<script data-unframer="rescue">${RESCUE_SCRIPT}</script>`);
+      rescueSize = rescueBytes();
+      genericWarnings.push(
+        'Content rescue included: any element left invisible after the page settles is revealed, in case the original reveal script does not run once self-hosted.',
+      );
+    }
+
     if (onDocument) onDocument($, genericWarnings);
 
     const genericReport: ExtractReport = {
@@ -126,7 +140,7 @@ export function extract(
       scrollReveals: 0,
       revealGroups: 0,
       tickers: 0,
-      shimBytes: 0,
+      shimBytes: rescueSize,
       runtimeModules: 0,
       assets: inventoryAssets($, true, true, opts.baseUrl),
       warnings: genericWarnings,
