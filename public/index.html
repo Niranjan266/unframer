@@ -1,172 +1,705 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Unframer — extract any website's code</title>
-<meta name="description" content="Convert any website into portable HTML, CSS and JavaScript you can host anywhere. Trackers and platform watermarks removed.">
+<meta name="description" content="Turn any website into portable HTML, CSS and JavaScript you can host anywhere. Trackers and platform watermarks removed automatically.">
+<meta name="color-scheme" content="dark light">
+<meta property="og:title" content="Unframer — extract any website's code">
+<meta property="og:description" content="Turn any website into portable HTML, CSS and JavaScript you can host anywhere.">
+<meta property="og:type" content="website">
+<!-- SVG first for browsers that take it, ICO for the rest and for Windows tabs. -->
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#0d7c6c">
+<meta property="og:image" content="/icon-512.png">
 <style>
+  /* ---------- tokens ---------------------------------------------------- */
   :root {
-    --ground:#f1f4f3; --surface:#fff; --surface-2:#e9eeec;
-    --ink:#101817; --ink-2:#3a4a47; --muted:#687874; --line:#d6deda;
-    --accent:#0b6f5e; --accent-ink:#fff; --warn:#a83e22;
-    --flag:#8a6212; --flag-bg:#f7ebd2;
+    --bg:#f6f8f8;  --bg-2:#eef2f2;  --surface:#ffffff;  --surface-2:#f2f6f5;
+    --line:#dbe3e2; --line-2:#c6d2d0;
+    --ink:#0d1615;  --ink-2:#3d4d4b; --muted:#616f6d;
+    --brand:#0d7c6c; --brand-2:#0a6357; --brand-ink:#ffffff; --brand-soft:#e3f3f0;
+    --ok:#0d7c6c;   --danger:#b23c1f; --danger-soft:#fbeae5;
+    --warn:#8a6212; --warn-soft:#faf0da;
+    --ring:0 0 0 3px rgba(13,124,108,.28);
+    --sh-1:0 1px 2px rgba(13,22,21,.05), 0 1px 3px rgba(13,22,21,.06);
+    --sh-2:0 4px 12px rgba(13,22,21,.07), 0 12px 32px rgba(13,22,21,.08);
+    --sh-3:0 24px 60px rgba(13,22,21,.18);
+    --r-sm:8px; --r:12px; --r-lg:18px;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --ground:#0b100f; --surface:#131b1a; --surface-2:#1b2523;
-      --ink:#e7eeec; --ink-2:#b6c5c1; --muted:#859893; --line:#243130;
-      --accent:#4fd0b4; --accent-ink:#06201b; --warn:#f0866a;
-      --flag:#e0b252; --flag-bg:#2a2110;
-    }
+  :root[data-theme="dark"] {
+    --bg:#080c0c;  --bg-2:#0c1211;  --surface:#111917;  --surface-2:#18211f;
+    --line:#22302e; --line-2:#2e403d;
+    --ink:#e9f1ef;  --ink-2:#b3c3c0; --muted:#7f918e;
+    --brand:#2fd4b5; --brand-2:#57e0c5; --brand-ink:#04211c; --brand-soft:#0d2b26;
+    --ok:#2fd4b5;   --danger:#ff8a66; --danger-soft:#2a1410;
+    --warn:#e6b955; --warn-soft:#2a2211;
+    --ring:0 0 0 3px rgba(47,212,181,.30);
+    --sh-1:0 1px 2px rgba(0,0,0,.5);
+    --sh-2:0 6px 18px rgba(0,0,0,.45), 0 18px 44px rgba(0,0,0,.4);
+    --sh-3:0 30px 70px rgba(0,0,0,.65);
   }
-  * { box-sizing:border-box }
+
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
   body {
-    margin:0; background:var(--ground); color:var(--ink);
-    font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    -webkit-font-smoothing:antialiased;
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    overflow-x:hidden;
   }
-  .wrap { max-width:720px; margin:0 auto; padding:56px 24px 80px }
-  h1 { font-size:2.1rem; letter-spacing:-.03em; margin:0 0 8px }
-  .lede { color:var(--ink-2); margin:0 0 28px }
-  form { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:22px }
-  label { display:block; font-size:.82rem; font-weight:600; margin-bottom:6px }
-  input {
-    width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:8px;
-    background:var(--ground); color:var(--ink); font:inherit; font-size:.95rem;
+
+  /* ambient wash — pure paint, never affects layout */
+  body::before {
+    content:''; position:fixed; inset:-30% -10% auto -10%; height:70vh; z-index:0;
+    background:
+      radial-gradient(48% 55% at 22% 0%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 70%),
+      radial-gradient(42% 50% at 82% 8%, color-mix(in srgb, var(--brand) 11%, transparent), transparent 72%);
+    pointer-events:none;
   }
-  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
-  .row { display:flex; gap:14px; flex-wrap:wrap; margin-top:16px }
-  .row > div { flex:1; min-width:160px }
-  button {
-    margin-top:20px; width:100%; padding:13px; border:0; border-radius:8px;
-    background:var(--accent); color:var(--accent-ink); font:inherit; font-weight:600; cursor:pointer;
+
+  .shell { position:relative; z-index:1; max-width:1080px; margin:0 auto; padding:0 24px 96px; }
+
+  /* ---------- header ---------------------------------------------------- */
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; padding:22px 0 0;
   }
-  button:disabled { opacity:.55; cursor:not-allowed }
-  .hint { font-size:.8rem; color:var(--muted); margin-top:6px }
-  #out { margin-top:22px; display:none }
-  #out.on { display:block }
-  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px 20px }
-  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:1px;
-    background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:14px 0 }
-  .stat { background:var(--surface); padding:11px 13px }
-  .stat b { display:block; font-size:1.2rem; letter-spacing:-.02em; font-variant-numeric:tabular-nums }
-  .stat span { font-size:.68rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted) }
-  .err { color:var(--warn); font-weight:600 }
-  .note { border-left:3px solid var(--flag); background:var(--flag-bg);
-    border-radius:0 8px 8px 0; padding:14px 16px; margin-top:26px; font-size:.88rem }
-  .note b { display:block; margin-bottom:5px }
-  code { font-family:ui-monospace,Menlo,Consolas,monospace; background:var(--surface-2);
-    padding:1px 5px; border-radius:4px; font-size:.86em }
-  footer { margin-top:34px; font-size:.85rem; color:var(--muted) }
-  footer a { color:var(--accent) }
-  .spin { display:inline-block; width:13px; height:13px; border:2px solid currentColor;
-    border-right-color:transparent; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:7px }
-  @keyframes sp { to { transform:rotate(360deg) } }
-  @media (prefers-reduced-motion:reduce) { .spin { animation:none } }
+  .brand { display:flex; align-items:center; gap:11px; font-weight:650; letter-spacing:-.015em; }
+  .brand .mark {
+    width:32px; height:32px; border-radius:9px; flex:none;
+    background:linear-gradient(145deg, var(--brand), var(--brand-2));
+    display:grid; place-items:center; color:var(--brand-ink); box-shadow:var(--sh-1);
+  }
+  .head-actions { display:flex; align-items:center; gap:8px; }
+  .icon-btn {
+    width:44px; height:44px; display:grid; place-items:center; cursor:pointer;
+    border:1px solid var(--line); border-radius:10px; background:var(--surface);
+    color:var(--ink-2); transition:background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .icon-btn:hover { background:var(--surface-2); border-color:var(--line-2); color:var(--ink); }
+  .ghost-link {
+    display:inline-flex; align-items:center; gap:7px; height:44px; padding:0 15px;
+    border:1px solid var(--line); border-radius:10px; background:var(--surface);
+    color:var(--ink-2); text-decoration:none; font-size:.88rem; font-weight:550;
+    transition:background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .ghost-link:hover { background:var(--surface-2); border-color:var(--line-2); color:var(--ink); }
+
+  :is(a,button,input,select,summary):focus-visible {
+    outline:none; box-shadow:var(--ring); border-radius:var(--r-sm);
+  }
+
+  /* ---------- hero ------------------------------------------------------- */
+  .hero { padding:64px 0 34px; max-width:38ch; }
+  .eyebrow {
+    display:inline-flex; align-items:center; gap:8px; margin-bottom:18px;
+    padding:6px 12px 6px 8px; border-radius:999px;
+    background:var(--brand-soft); color:var(--brand);
+    border:1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+    font-size:.76rem; font-weight:600; letter-spacing:.02em;
+  }
+  .eyebrow .pip { width:6px; height:6px; border-radius:50%; background:var(--brand); }
+  h1 {
+    margin:0 0 14px; font-size:clamp(2.35rem, 6vw, 3.6rem); line-height:1.04;
+    letter-spacing:-.038em; font-weight:680; text-wrap:balance;
+  }
+  h1 .grad {
+    background:linear-gradient(100deg, var(--brand), var(--brand-2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub { margin:0; font-size:1.1rem; color:var(--ink-2); max-width:52ch; }
+
+  /* ---------- console ---------------------------------------------------- */
+  .console {
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--r-lg); box-shadow:var(--sh-2); overflow:hidden;
+  }
+  .console-bar {
+    display:flex; align-items:center; gap:8px; padding:12px 18px;
+    border-bottom:1px solid var(--line); background:var(--surface-2);
+  }
+  .console-bar .dots { display:flex; gap:6px; }
+  .console-bar .dots i { width:10px; height:10px; border-radius:50%; background:var(--line-2); }
+  .console-bar .label {
+    margin-left:6px; font:500 .78rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color:var(--muted); letter-spacing:.02em;
+  }
+  .console-body { padding:24px; }
+
+  label { display:block; font-size:.82rem; font-weight:600; margin-bottom:8px; letter-spacing:.005em; }
+  .field { position:relative; display:flex; align-items:center; }
+  .field .lead {
+    position:absolute; left:14px; display:grid; place-items:center;
+    color:var(--muted); pointer-events:none;
+  }
+  input[type=url], input[type=number] {
+    width:100%; min-height:52px; padding:14px 14px 14px 42px;
+    border:1px solid var(--line); border-radius:var(--r);
+    background:var(--bg-2); color:var(--ink); font:inherit; font-size:1rem;
+    transition:border-color .18s ease, background .18s ease;
+  }
+  input[type=number] { padding-left:14px; }
+  input::placeholder { color:var(--muted); }
+  input:hover { border-color:var(--line-2); }
+  input:focus { border-color:var(--brand); background:var(--surface); }
+  .hint { margin:8px 0 0; font-size:.81rem; color:var(--muted); }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:18px; }
+  @media (max-width:560px) { .grid2 { grid-template-columns:1fr; } }
+
+  .cta {
+    margin-top:22px; width:100%; min-height:52px; padding:14px 20px; cursor:pointer;
+    border:0; border-radius:var(--r); font:inherit; font-weight:650; font-size:1rem;
+    background:linear-gradient(160deg, var(--brand), var(--brand-2));
+    color:var(--brand-ink); box-shadow:var(--sh-1);
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    transition:filter .18s ease, box-shadow .18s ease;
+  }
+  .cta:hover:not(:disabled) { filter:brightness(1.06); box-shadow:var(--sh-2); }
+  .cta:disabled { opacity:.6; cursor:not-allowed; }
+
+  /* ---------- progress --------------------------------------------------- */
+  #progress { display:none; margin-top:22px; }
+  #progress.on { display:block; }
+  .track {
+    height:6px; border-radius:999px; background:var(--bg-2);
+    overflow:hidden; border:1px solid var(--line);
+  }
+  .track i {
+    display:block; height:100%; width:38%; border-radius:999px;
+    background:linear-gradient(90deg, transparent, var(--brand), transparent);
+    animation:slide 1.25s ease-in-out infinite;
+  }
+  @keyframes slide { 0%{transform:translateX(-110%)} 100%{transform:translateX(360%)} }
+  .steps { margin-top:16px; display:grid; gap:9px; }
+  .step {
+    display:flex; align-items:center; gap:11px;
+    font-size:.9rem; color:var(--muted); transition:color .2s ease;
+  }
+  .step .box {
+    width:20px; height:20px; flex:none; border-radius:6px;
+    border:1.5px solid var(--line-2); display:grid; place-items:center;
+    color:transparent; transition:border-color .2s ease, background .2s ease, color .2s ease;
+  }
+  .step.active { color:var(--ink); }
+  .step.active .box { border-color:var(--brand); }
+  .step.active .box::after {
+    content:''; width:8px; height:8px; border-radius:50%;
+    background:var(--brand); animation:beat 1s ease-in-out infinite;
+  }
+  @keyframes beat { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.72)} }
+  .step.done { color:var(--ink-2); }
+  .step.done .box { border-color:var(--brand); background:var(--brand); color:var(--brand-ink); }
+  .elapsed {
+    margin-top:14px; font:500 .8rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color:var(--muted); font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- inline error ----------------------------------------------- */
+  #err { display:none; margin-top:18px; }
+  #err.on { display:flex; }
+  #err {
+    gap:11px; align-items:flex-start; padding:14px 16px;
+    border:1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+    background:var(--danger-soft); border-radius:var(--r); font-size:.9rem;
+  }
+  #err .ic { color:var(--danger); flex:none; margin-top:1px; }
+  #err strong { display:block; color:var(--danger); margin-bottom:2px; }
+
+  /* ---------- features --------------------------------------------------- */
+  .features { margin-top:64px; }
+  .features h2 {
+    margin:0 0 4px; font-size:1.25rem; letter-spacing:-.02em; font-weight:640;
+  }
+  .features .lede { margin:0 0 22px; color:var(--muted); font-size:.94rem; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(228px,1fr)); gap:14px; }
+  .card {
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--r); padding:20px; box-shadow:var(--sh-1);
+    transition:border-color .18s ease, box-shadow .18s ease;
+  }
+  .card:hover { border-color:var(--line-2); box-shadow:var(--sh-2); }
+  .card .ic {
+    width:34px; height:34px; border-radius:9px; display:grid; place-items:center;
+    background:var(--brand-soft); color:var(--brand); margin-bottom:13px;
+  }
+  .card h3 { margin:0 0 5px; font-size:.97rem; font-weight:620; letter-spacing:-.01em; }
+  .card p { margin:0; font-size:.88rem; color:var(--ink-2); line-height:1.55; }
+
+  /* ---------- note ------------------------------------------------------- */
+  .note {
+    margin-top:28px; display:flex; gap:13px; align-items:flex-start;
+    padding:18px 20px; border-radius:var(--r);
+    border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+    background:var(--warn-soft); font-size:.9rem; line-height:1.6;
+  }
+  .note .ic { color:var(--warn); flex:none; margin-top:2px; }
+  .note b { display:block; margin-bottom:4px; }
+  code {
+    font:.86em/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:var(--surface); border:1px solid var(--line);
+    padding:2px 6px; border-radius:5px;
+  }
+
+  footer {
+    margin-top:56px; padding-top:22px; border-top:1px solid var(--line);
+    display:flex; flex-wrap:wrap; gap:10px 20px; justify-content:space-between;
+    font-size:.86rem; color:var(--muted);
+  }
+  footer a { color:var(--brand); text-decoration:none; }
+  footer a:hover { text-decoration:underline; }
+
+  /* ---------- success dialog --------------------------------------------- */
+  .scrim {
+    position:fixed; inset:0; z-index:50; display:none;
+    align-items:center; justify-content:center; padding:24px;
+    background:rgba(4,10,9,.62); backdrop-filter:blur(6px);
+  }
+  .scrim.on { display:flex; animation:fade .22s ease both; }
+  @keyframes fade { from{opacity:0} to{opacity:1} }
+
+  .dialog {
+    width:min(460px,100%); background:var(--surface);
+    border:1px solid var(--line); border-radius:20px; box-shadow:var(--sh-3);
+    padding:34px 30px 26px; text-align:center;
+    animation:pop .38s cubic-bezier(.2,.9,.3,1.2) both;
+  }
+  @keyframes pop { from{opacity:0; transform:translateY(14px) scale(.94)} to{opacity:1; transform:none} }
+
+  .seal { width:74px; height:74px; margin:0 auto 18px; position:relative; }
+  .seal .ring {
+    position:absolute; inset:0; border-radius:50%;
+    background:var(--brand-soft);
+    animation:sealIn .42s cubic-bezier(.2,.9,.3,1.3) both;
+  }
+  @keyframes sealIn { from{transform:scale(.3); opacity:0} to{transform:scale(1); opacity:1} }
+  .seal .halo {
+    position:absolute; inset:0; border-radius:50%;
+    border:2px solid var(--brand); opacity:.45;
+    animation:halo 1.5s ease-out .3s infinite;
+  }
+  @keyframes halo {
+    0%{transform:scale(1); opacity:.45}
+    100%{transform:scale(1.55); opacity:0}
+  }
+  .seal svg { position:absolute; inset:0; width:74px; height:74px; color:var(--brand); }
+  .seal .tick {
+    stroke-dasharray:32; stroke-dashoffset:32;
+    animation:draw .4s cubic-bezier(.6,0,.3,1) .28s forwards;
+  }
+  @keyframes draw { to { stroke-dashoffset:0 } }
+
+  .dialog h2 { margin:0 0 6px; font-size:1.3rem; letter-spacing:-.022em; font-weight:660; }
+  .dialog .said { margin:0 0 20px; color:var(--ink-2); font-size:.93rem; }
+
+  .facts {
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line);
+    border-radius:var(--r); overflow:hidden; margin-bottom:20px;
+  }
+  @media (max-width:420px) { .facts { grid-template-columns:repeat(2,1fr); } }
+  .fact { background:var(--surface); padding:12px 8px; }
+  .fact b {
+    display:block; font-size:1.1rem; font-weight:660; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  .fact span {
+    font-size:.63rem; text-transform:uppercase; letter-spacing:.085em; color:var(--muted);
+  }
+
+  .dialog-actions { display:grid; gap:9px; }
+  .btn-solid, .btn-quiet {
+    min-height:46px; padding:12px 18px; border-radius:var(--r);
+    font:inherit; font-weight:600; font-size:.94rem; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:9px;
+    transition:filter .18s ease, background .18s ease, border-color .18s ease;
+  }
+  .btn-solid {
+    border:0; background:linear-gradient(160deg,var(--brand),var(--brand-2));
+    color:var(--brand-ink); text-decoration:none;
+  }
+  .btn-solid:hover { filter:brightness(1.06); }
+  .btn-quiet {
+    border:1px solid var(--line); background:var(--surface); color:var(--ink-2);
+  }
+  .btn-quiet:hover { background:var(--surface-2); border-color:var(--line-2); }
+
+  .next {
+    margin-top:18px; padding-top:16px; border-top:1px solid var(--line);
+    font-size:.83rem; color:var(--muted); text-align:left; line-height:1.6;
+  }
+
+  @media (prefers-reduced-motion:reduce) {
+    *, *::before, *::after { animation:none !important; transition:none !important; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Unframer</h1>
-  <p class="lede">Turn any website into portable HTML, CSS and JavaScript you can host anywhere. Trackers and platform watermarks are stripped out.</p>
+<div class="shell">
 
-  <form id="f">
-    <label for="url">Site URL</label>
-    <input id="url" type="url" required placeholder="https://example.com/" autocomplete="url">
-    <p class="hint">Export sites you own or are authorised to export.</p>
+  <header>
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 11v3.4a2.6 2.6 0 0 0 2.6 2.6h4.8a2.6 2.6 0 0 0 2.6-2.6V11"/>
+          <path d="M12 5.2v6.4"/>
+          <path d="m9.4 9.4 2.6 2.6 2.6-2.6"/>
+        </svg>
+      </span>
+      Unframer
+    </div>
+    <div class="head-actions">
+      <a class="ghost-link" href="https://github.com/Niranjan266/unframer" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58v-2.2c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.23 0 4.63-2.81 5.65-5.49 5.95.43.37.82 1.1.82 2.22v3.29c0 .32.21.7.83.58A12 12 0 0 0 12 .5Z"/></svg>
+        GitHub
+      </a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch colour theme">
+        <svg id="theme-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"></svg>
+      </button>
+    </div>
+  </header>
 
-    <div class="row">
-      <div>
-        <label for="pages">Pages</label>
-        <input id="pages" type="number" min="1" max="5" value="1">
-        <p class="hint">Up to 5 here. Unlimited when you run it yourself.</p>
+  <section class="hero">
+    <span class="eyebrow"><span class="pip" aria-hidden="true"></span> Open source &middot; MIT</span>
+    <h1>Extract any website's <span class="grad">front-end code</span></h1>
+    <p class="sub">Paste a URL and get clean, portable HTML, CSS and JavaScript you can host anywhere. Trackers and platform watermarks are stripped automatically.</p>
+  </section>
+
+  <section class="console" aria-labelledby="form-h">
+    <div class="console-bar">
+      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="label">unframer &mdash; extract</span>
+    </div>
+    <div class="console-body">
+      <h2 id="form-h" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">Extract a website</h2>
+      <form id="form" novalidate>
+        <label for="url">Website URL</label>
+        <div class="field">
+          <span class="lead" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/>
+            </svg>
+          </span>
+          <input id="url" name="url" type="url" required autocomplete="url" spellcheck="false"
+                 placeholder="https://example.com" aria-describedby="url-hint">
+        </div>
+        <p class="hint" id="url-hint">Export sites you own or are authorised to export.</p>
+
+        <div class="grid2">
+          <div>
+            <label for="pages">Pages to include</label>
+            <input id="pages" name="pages" type="number" min="1" max="5" value="1" aria-describedby="pages-hint">
+            <p class="hint" id="pages-hint">Up to 5 here &middot; unlimited when self-hosted.</p>
+          </div>
+        </div>
+
+        <button class="cta" id="go" type="submit">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>
+          </svg>
+          <span id="go-text">Extract code</span>
+        </button>
+      </form>
+
+      <div id="progress" role="status" aria-live="polite">
+        <div class="track" aria-hidden="true"><i></i></div>
+        <div class="steps" id="steps"></div>
+        <div class="elapsed" id="elapsed">0.0s elapsed</div>
+      </div>
+
+      <div id="err" role="alert">
+        <span class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2v.1"/>
+          </svg>
+        </span>
+        <span><strong id="err-title">Export failed</strong><span id="err-body"></span></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <h2>What comes out</h2>
+    <p class="lede">A folder you can open, edit, and upload to any static host.</p>
+    <div class="cards">
+      <div class="card">
+        <span class="ic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6"/><path d="m16 6 6 6-6 6"/></svg></span>
+        <h3>Real markup</h3>
+        <p>Semantic HTML and CSS with no build step and no framework to install.</p>
+      </div>
+      <div class="card">
+        <span class="ic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></span>
+        <h3>Animations kept</h3>
+        <p>Framer sites keep their runtime, so scroll effects and interactions still run.</p>
+      </div>
+      <div class="card">
+        <span class="ic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13V7a2 2 0 0 0-2-2h-6l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9"/><path d="M17 17v5M14.5 19.5h5"/></svg></span>
+        <h3>Every page</h3>
+        <p>Nested routes become real folders with working links between them.</p>
+      </div>
+      <div class="card">
+        <span class="ic" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <h3>Cleaned up</h3>
+        <p>Analytics, tracking pixels and platform badges removed before you ship.</p>
       </div>
     </div>
 
-    <button id="go" type="submit">Extract code</button>
-  </form>
-
-  <div id="out"></div>
-
-  <div class="note">
-    <b>This hosted version is deliberately limited</b>
-    It runs on serverless functions, which stop after 60 seconds and cannot return
-    more than a few megabytes — so it links assets to their original host rather
-    than downloading them, and caps the page count.
-    <br><br>
-    For the complete export — every image, font and script downloaded, full animation
-    fidelity on Framer sites, and a preview server bundled in — run it locally.
-    It is one command and has no limits.
-  </div>
+    <div class="note">
+      <span class="ic" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8.2v.1M12 11.5v4.3"/></svg>
+      </span>
+      <span>
+        <b>This hosted version is deliberately limited</b>
+        It runs on serverless functions that stop after 60 seconds and cannot return more than a few
+        megabytes, so it links assets to their original host instead of downloading them and caps the
+        page count. For the complete export &mdash; every image, font and script downloaded, plus a
+        bundled preview server &mdash; clone the repo and run <code>npx tsx src/cli.ts exportsite &lt;url&gt;</code>.
+      </span>
+    </div>
+  </section>
 
   <footer>
-    Open source, MIT licensed &middot;
-    <a href="https://github.com/Niranjan266/unframer">github.com/Niranjan266/unframer</a>
+    <span>Open source &middot; MIT licensed</span>
+    <a href="https://github.com/Niranjan266/unframer" target="_blank" rel="noopener">github.com/Niranjan266/unframer</a>
   </footer>
+</div>
+
+<!-- success dialog -->
+<div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="dlg-h" hidden>
+  <div class="dialog" id="dialog">
+    <div class="seal" aria-hidden="true">
+      <span class="ring"></span><span class="halo"></span>
+      <svg viewBox="0 0 74 74" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+        <path class="tick" d="m24 38 9.5 9.5L50 27"/>
+      </svg>
+    </div>
+    <h2 id="dlg-h">Your code is ready</h2>
+    <p class="said" id="dlg-said">The download has started automatically.</p>
+
+    <div class="facts" id="facts"></div>
+
+    <div class="dialog-actions">
+      <a class="btn-solid" id="again" href="#" download>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>
+        </svg>
+        Download again
+      </a>
+      <button class="btn-quiet" id="close" type="button">Extract another site</button>
+    </div>
+
+    <p class="next">
+      <b>Next:</b> unzip the folder and open <code>index.html</code>, or upload the whole
+      folder to Netlify, Vercel, Cloudflare Pages or any web server.
+    </p>
+  </div>
 </div>
 
 <script>
 (function () {
-  var f = document.getElementById('f');
-  var go = document.getElementById('go');
-  var out = document.getElementById('out');
+  'use strict';
 
-  function card(inner) {
-    out.className = 'on';
-    out.innerHTML = '<div class="card">' + inner + '</div>';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- theme ------------------------------------------------------ */
+  var SUN = '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/>';
+  var MOON = '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>';
+  var root = document.documentElement;
+
+  function paintTheme() {
+    // Show the icon of the theme you would switch TO.
+    $('theme-ic').innerHTML = root.getAttribute('data-theme') === 'dark' ? SUN : MOON;
+  }
+  try {
+    var saved = localStorage.getItem('unframer-theme');
+    if (saved) root.setAttribute('data-theme', saved);
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      root.setAttribute('data-theme', 'light');
+    }
+  } catch (e) { /* storage blocked; the default stands */ }
+  paintTheme();
+
+  $('theme').addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('unframer-theme', next); } catch (e) {}
+    paintTheme();
+  });
+
+  /* ---------- progress ---------------------------------------------------
+   * One request, no server-sent progress, so a percentage would be invented.
+   * An indeterminate bar plus the real elapsed time is honest; the step list
+   * describes what the server does, advancing on typical timings.
+   * -------------------------------------------------------------------- */
+  var STEPS = [
+    'Checking the URL',
+    'Fetching pages',
+    'Rewriting links and assets',
+    'Packaging the download'
+  ];
+  var AT = [0, 1200, 4000, 9000];
+  var timers = [], tick = null, t0 = 0;
+
+  function renderSteps() {
+    $('steps').innerHTML = STEPS.map(function (s, i) {
+      return '<div class="step" id="s' + i + '">' +
+        '<span class="box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L19 7"/></svg></span>' +
+        '<span>' + s + '</span></div>';
+    }).join('');
   }
 
-  function stat(v, l) {
-    return '<div class="stat"><b>' + v + '</b><span>' + l + '</span></div>';
+  function startProgress() {
+    renderSteps();
+    $('progress').classList.add('on');
+    t0 = Date.now();
+
+    STEPS.forEach(function (_, i) {
+      timers.push(setTimeout(function () {
+        if (i > 0) { var p = $('s' + (i - 1)); p.classList.remove('active'); p.classList.add('done'); }
+        $('s' + i).classList.add('active');
+      }, AT[i]));
+    });
+
+    tick = setInterval(function () {
+      $('elapsed').textContent = ((Date.now() - t0) / 1000).toFixed(1) + 's elapsed';
+    }, 100);
   }
 
-  f.addEventListener('submit', function (e) {
+  function stopProgress(complete) {
+    timers.forEach(clearTimeout); timers = [];
+    if (tick) { clearInterval(tick); tick = null; }
+    if (complete) {
+      STEPS.forEach(function (_, i) {
+        var el = $('s' + i);
+        if (el) { el.classList.remove('active'); el.classList.add('done'); }
+      });
+    }
+    $('progress').classList.remove('on');
+  }
+
+  /* ---------- dialog ----------------------------------------------------- */
+  var lastFocus = null;
+
+  function fact(v, l) {
+    return '<div class="fact"><b>' + v + '</b><span>' + l + '</span></div>';
+  }
+
+  function openDialog(info) {
+    $('facts').innerHTML =
+      fact(info.pages, 'Pages') + fact(info.assets, 'Assets') +
+      fact(info.removed, 'Cleaned') + fact(info.size, 'Size');
+    $('again').href = info.href;
+    $('again').setAttribute('download', info.name);
+    $('dlg-said').textContent = 'Saved as ' + info.name + '. The download has started automatically.';
+
+    lastFocus = document.activeElement;
+    var scrim = $('scrim');
+    scrim.hidden = false;
+    scrim.classList.add('on');
+    $('close').focus();
+  }
+
+  function closeDialog() {
+    var scrim = $('scrim');
+    scrim.classList.remove('on');
+    scrim.hidden = true;
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  $('close').addEventListener('click', closeDialog);
+  $('scrim').addEventListener('mousedown', function (e) {
+    if (e.target === $('scrim')) closeDialog();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('scrim').hidden) closeDialog();
+    // Keep focus inside the dialog while it is open.
+    if (e.key === 'Tab' && !$('scrim').hidden) {
+      var f = $('dialog').querySelectorAll('a[href], button');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  /* ---------- helpers ---------------------------------------------------- */
+  function bytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+
+  function showError(msg) {
+    $('err-body').textContent = msg;
+    $('err').classList.add('on');
+  }
+  function clearError() { $('err').classList.remove('on'); }
+
+  function busy(on) {
+    $('go').disabled = on;
+    $('go-text').textContent = on ? 'Extracting…' : 'Extract code';
+  }
+
+  /* ---------- submit ----------------------------------------------------- */
+  $('form').addEventListener('submit', function (e) {
     e.preventDefault();
-    go.disabled = true;
-    card('<span class="spin"></span>Extracting. This can take up to a minute.');
+    clearError();
+
+    var raw = $('url').value.trim();
+    if (!raw) { showError('Enter the address of the site you want to extract.'); $('url').focus(); return; }
+    if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
+
+    var host = 'site';
+    try { host = new URL(raw).hostname; }
+    catch (err) { showError('That does not look like a valid web address.'); $('url').focus(); return; }
+
+    busy(true);
+    startProgress();
 
     fetch('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: document.getElementById('url').value,
-        maxPages: Number(document.getElementById('pages').value)
-      })
+      body: JSON.stringify({ url: raw, maxPages: Number($('pages').value) || 1 })
     })
     .then(function (res) {
       var type = res.headers.get('content-type') || '';
       if (!res.ok || type.indexOf('application/zip') === -1) {
-        return res.json().then(function (b) { throw new Error(b.error || 'The export failed.'); });
+        return res.json()
+          .catch(function () { throw new Error('The export failed. Please try again.'); })
+          .then(function (b) { throw new Error(b.error || 'The export failed.'); });
       }
-      var pages = res.headers.get('X-Unframer-Pages') || '?';
-      var assets = res.headers.get('X-Unframer-Assets') || '?';
-      var removed = res.headers.get('X-Unframer-Removed') || '0';
+      var meta = {
+        pages: res.headers.get('X-Unframer-Pages') || '1',
+        assets: res.headers.get('X-Unframer-Assets') || '0',
+        removed: res.headers.get('X-Unframer-Removed') || '0'
+      };
       return res.blob().then(function (blob) {
-        var host = 'site';
-        try { host = new URL(document.getElementById('url').value).hostname; } catch (err) {}
+        stopProgress(true);
+        busy(false);
 
-        var url = URL.createObjectURL(blob);
+        var href = URL.createObjectURL(blob);
         var a = document.createElement('a');
-        a.href = url; a.download = host + '.zip';
+        a.href = href; a.download = host + '.zip';
         document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
 
-        card(
-          '<b>Export complete.</b> Your download should have started.' +
-          '<div class="stats">' +
-            stat(pages, 'Pages') + stat(assets, 'Assets linked') +
-            stat(removed, 'Trackers removed') +
-            stat((blob.size / 1024).toFixed(0) + ' KB', 'Size') +
-          '</div>' +
-          'Unzip it and open <code>index.html</code>, or upload the folder to any static host.'
-        );
-        go.disabled = false;
+        openDialog({
+          pages: meta.pages, assets: meta.assets, removed: meta.removed,
+          size: bytes(blob.size), href: href, name: host + '.zip'
+        });
+
+        // Keep the blob alive long enough for "Download again".
+        setTimeout(function () { URL.revokeObjectURL(href); }, 5 * 60 * 1000);
       });
     })
     .catch(function (err) {
-      card('<p class="err">' + err.message + '</p>');
-      go.disabled = false;
+      stopProgress(false);
+      busy(false);
+      showError(err.message || 'Something went wrong.');
     });
   });
 })();

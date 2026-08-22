@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" role="img" aria-label="Unframer">
+  <!--
+    Horizontal lockup: mark plus wordmark, for the README and social cards.
+
+    The wordmark is live text with a system-font stack rather than outlined
+    paths, so it stays editable and weighs nothing. That means it renders with
+    whatever sans-serif the viewer has — fine for a developer tool, but if this
+    ever needs to be pixel-identical everywhere, convert the text to paths.
+  -->
+  <defs>
+    <linearGradient id="uf-lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14b39b"/>
+      <stop offset="1" stop-color="#0a6357"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#uf-lg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 29v9a7 7 0 0 0 7 7h14a7 7 0 0 0 7-7v-9"/>
+    <path d="M32 14v17"/>
+    <path d="m25 25 7 7 7-7"/>
+  </g>
+
+  <text x="80" y="41.5"
+        font-family="ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif"
+        font-size="27" font-weight="650" letter-spacing="-0.9"
+        fill="currentColor">Unframer</text>
+</svg>

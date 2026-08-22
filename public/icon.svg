@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Unframer">
+  <!--
+    The mark: an open frame with content dropping into it.
+
+    The name is the idea — un-framing. The container is drawn with its top edge
+    missing, so it reads as a frame that has been opened, and doubles as a "U".
+    The arrow is the site's code coming out of the platform and into your hands.
+
+    Deliberately only two shapes and one stroke weight: a favicon is rendered at
+    16px, where anything finer turns to mush.
+  -->
+  <defs>
+    <linearGradient id="uf-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14b39b"/>
+      <stop offset="1" stop-color="#0a6357"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#uf-g)"/>
+
+  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- open frame -->
+    <path d="M18 29v9a7 7 0 0 0 7 7h14a7 7 0 0 0 7-7v-9"/>
+    <!-- content leaving it -->
+    <path d="M32 14v17"/>
+    <path d="m25 25 7 7 7-7"/>
+  </g>
+</svg>
