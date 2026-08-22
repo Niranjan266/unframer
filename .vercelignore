@@ -1,8 +1,19 @@
+# Patterns here match at ANY depth unless anchored with a leading slash.
+# An unanchored "site*" also matches src/site.ts, which silently dropped source
+# files from the upload and made the build fail with "cannot find module".
 node_modules
-dist
-out*
-site*
-verify-*
-test
-*.zip
 .git
+
+# Export output, at the repo root only.
+/out
+/out-*
+/site
+/generic-test
+/nd*
+/*.zip
+/verify-diffs
+/verify-*
+
+# Not needed to build or run the function.
+/test
+/.github

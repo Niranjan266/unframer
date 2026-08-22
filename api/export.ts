@@ -19,14 +19,19 @@
  *
  * Anything larger belongs on a machine that can hold state — the Dockerfile in
  * this repo runs the complete pipeline with no such limits.
+ *
+ * Imports point at `dist/`, not `src/`. The platform transpiles this file but
+ * does not compile the TypeScript it imports, so a `../src/*.js` specifier
+ * resolves to a file that never exists at runtime. The build compiles `src/`
+ * first and `includeFiles` ships the result alongside the function.
  */
 
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { exportSite } from '../src/site.js';
-import { createZip } from '../src/package.js';
-import { assertPublicUrl, BlockedUrlError } from '../src/ssrf.js';
+import { exportSite } from '../dist/site.js';
+import { createZip } from '../dist/package.js';
+import { assertPublicUrl, BlockedUrlError } from '../dist/ssrf.js';
 
 /** Minimal shape of the request and response, so this needs no extra dependency. */
 interface Req {
