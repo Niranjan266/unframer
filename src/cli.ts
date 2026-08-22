@@ -2,8 +2,9 @@
 /**
  * Unframer CLI.
  *
- * Usage:
- *   unframer <url|file> [--out DIR] [--offline] [--no-animations] [--json]
+ * A URL exports the whole site by default — that is what people actually want,
+ * and single-page was only ever the phase 01 shape. `--single` keeps the old
+ * behaviour for one page.
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -11,6 +12,7 @@ import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { extract, NotAFramerSiteError } from './extract.js';
 import { fetchPage } from './fetch.js';
+import { exportSite, type SiteReport } from './site.js';
 import type { AssetMode, ExtractReport } from './types.js';
 
 interface Args {
@@ -18,8 +20,14 @@ interface Args {
   out: string;
   assetMode: AssetMode;
   compileAnimations: boolean;
+  single: boolean;
+  sitemapOnly: boolean;
   json: boolean;
   help: boolean;
+  baseUrl?: string;
+  maxPages: number;
+  maxDepth: number;
+  concurrency: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -27,16 +35,32 @@ function parseArgs(argv: string[]): Args {
     out: 'out',
     assetMode: 'hotlink',
     compileAnimations: true,
+    single: false,
+    sitemapOnly: false,
     json: false,
     help: false,
+    maxPages: 100,
+    maxDepth: 3,
+    concurrency: 4,
+  };
+
+  const int = (v: string | undefined, fallback: number) => {
+    const n = Number.parseInt(v ?? '', 10);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
   };
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--out' || a === '-o') args.out = argv[++i] ?? 'out';
+    else if (a === '--base-url') args.baseUrl = argv[++i];
     else if (a === '--offline') args.assetMode = 'offline';
     else if (a === '--no-animations') args.compileAnimations = false;
+    else if (a === '--single') args.single = true;
+    else if (a === '--sitemap-only') args.sitemapOnly = true;
+    else if (a === '--max-pages') args.maxPages = int(argv[++i], 100);
+    else if (a === '--max-depth') args.maxDepth = int(argv[++i], 3);
+    else if (a === '--concurrency') args.concurrency = int(argv[++i], 4);
     else if (a === '--json') args.json = true;
     else if (!a.startsWith('-')) args.input = a;
   }
@@ -50,27 +74,32 @@ Usage
   unframer <url|file> [options]
 
 Options
-  -o, --out <dir>     Output directory (default: out)
-      --offline       Download assets locally (phase 03 — not yet implemented)
-      --no-animations Skip animation compilation; force final visible state
-      --json          Print the report as JSON
-  -h, --help          Show this help
+  -o, --out <dir>        Output directory (default: out)
+      --base-url <url>   Final public URL; rewrites canonical/og:url and sitemap
+      --single           Export only the given page
+      --sitemap-only     Discover routes from sitemap.xml only, skip crawling
+      --max-pages <n>    Page cap for discovery (default: 100)
+      --max-depth <n>    Crawl depth (default: 3)
+      --concurrency <n>  Parallel fetches (default: 4 — the CDN throttles)
+      --offline          Download assets locally (phase 03 — not yet implemented)
+      --no-animations    Skip animation compilation; force final visible state
+      --json             Print the report as JSON
+  -h, --help             Show this help
 
 Examples
-  unframer https://example.framer.website/
-  unframer page.html --out dist
+  unframer https://your-site.framer.website/ --out dist
+  unframer https://your-site.framer.website/ --base-url https://example.com
+  unframer page.html --single --out dist
 `;
 
-/** Human-readable byte size. */
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function printReport(report: ExtractReport): void {
+function printPageReport(report: ExtractReport): void {
   const totalRemoved = report.removals.reduce((a, r) => a + r.count, 0);
-
   console.log('');
   console.log('  Export complete');
   console.log('  ' + '─'.repeat(48));
@@ -89,43 +118,54 @@ function printReport(report: ExtractReport): void {
       console.log(`    ${String(r.count).padStart(3)}  ${r.detail}`);
     }
   }
-
-  if (report.warnings.length) {
-    console.log('');
-    console.log('  Warnings');
-    for (const w of report.warnings) console.log(`    !  ${w}`);
-  }
-  console.log('');
+  printWarnings(report.warnings);
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+function printSiteReport(report: SiteReport): void {
+  console.log('');
+  console.log('  Export complete');
+  console.log('  ' + '─'.repeat(52));
+  console.log(`  Pages             ${report.pagesExported} exported, ${report.pagesFailed} failed`);
+  console.log(`  Size              ${fmtBytes(report.totalBytesBefore)} → ${fmtBytes(report.totalBytesAfter)}`);
+  console.log(`  Animation rules   ${report.totalAnimationRules}`);
+  console.log(`  Unique assets     ${report.uniqueAssets}`);
+  console.log(`  Artifacts removed ${report.totalArtifactsRemoved}`);
+  if (report.formsFound > 0) console.log(`  Forms needing an endpoint  ${report.formsFound}`);
 
-  if (args.help || !args.input) {
-    console.log(HELP);
-    process.exit(args.input ? 0 : 1);
+  console.log('');
+  console.log('  Pages');
+  for (const p of report.pages) {
+    const mark = p.ok ? '✓' : '✗';
+    const detail = p.ok ? p.filePath : `${p.filePath}  — ${p.error}`;
+    console.log(`    ${mark}  ${p.route.padEnd(28)} ${detail}`);
   }
 
-  const input = args.input;
+  printWarnings(report.warnings);
+}
+
+function printWarnings(warnings: readonly string[]): void {
+  if (!warnings.length) return;
+  console.log('');
+  console.log('  Warnings');
+  for (const w of warnings) console.log(`    !  ${w}`);
+}
+
+async function runSingle(args: Args): Promise<void> {
+  const input = args.input!;
   let html: string;
   let baseUrl: string | undefined;
 
-  try {
-    if (/^https?:\/\//i.test(input)) {
-      baseUrl = input;
-      console.log(`  Fetching ${input} …`);
-      html = await fetchPage(input);
-    } else {
-      const path = resolve(input);
-      if (!existsSync(path)) {
-        console.error(`  Input file not found: ${path}`);
-        process.exit(1);
-      }
-      html = await readFile(path, 'utf8');
+  if (/^https?:\/\//i.test(input)) {
+    baseUrl = input;
+    console.log(`  Fetching ${input} …`);
+    html = await fetchPage(input);
+  } else {
+    const path = resolve(input);
+    if (!existsSync(path)) {
+      console.error(`  Input file not found: ${path}`);
+      process.exit(1);
     }
-  } catch (err) {
-    console.error(`  ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
+    html = await readFile(path, 'utf8');
   }
 
   let result;
@@ -152,12 +192,62 @@ async function main(): Promise<void> {
     'utf8',
   );
 
-  if (args.json) {
-    console.log(JSON.stringify(result.report, null, 2));
-  } else {
-    printReport(result.report);
+  if (args.json) console.log(JSON.stringify(result.report, null, 2));
+  else {
+    printPageReport(result.report);
+    console.log('');
     console.log(`  Written to ${join(outDir, 'index.html')}`);
     console.log('');
+  }
+}
+
+async function runSite(args: Args): Promise<void> {
+  const url = args.input!;
+  console.log(`  Discovering routes from ${url} …`);
+
+  const report = await exportSite(url, {
+    outDir: args.out,
+    assetMode: args.assetMode,
+    compileAnimations: args.compileAnimations,
+    baseUrl: args.baseUrl,
+    maxPages: args.maxPages,
+    maxDepth: args.maxDepth,
+    concurrency: args.concurrency,
+    sitemapOnly: args.sitemapOnly,
+    onProgress: (done, total, route, ok) => {
+      if (!args.json) {
+        console.log(`  [${String(done).padStart(2)}/${total}] ${ok ? '✓' : '✗'} ${route}`);
+      }
+    },
+  });
+
+  if (args.json) console.log(JSON.stringify(report, null, 2));
+  else {
+    printSiteReport(report);
+    console.log('');
+    console.log(`  Written to ${resolve(args.out)}`);
+    console.log('');
+  }
+
+  if (report.pagesExported === 0) process.exit(3);
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+
+  if (args.help || !args.input) {
+    console.log(HELP);
+    process.exit(args.input ? 0 : 1);
+  }
+
+  const isUrl = /^https?:\/\//i.test(args.input);
+
+  try {
+    if (isUrl && !args.single) await runSite(args);
+    else await runSingle(args);
+  } catch (err) {
+    console.error(`  ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
   }
 }
 
