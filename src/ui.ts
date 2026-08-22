@@ -95,11 +95,11 @@ export const UI_HTML = `<!doctype html>
 <div class="wrap">
   <nav><a href="/" class="on">Quick export</a><a href="/exportcode">Export code (any site)</a></nav>
   <h1>Unframer</h1>
-  <p class="lede">Convert a published Framer site into portable HTML, CSS and JavaScript you can host anywhere.</p>
+  <p class="lede">Convert any site into portable HTML, CSS and JavaScript you can host anywhere. For full animations and interactions, use <a href="/exportcode" style="color:var(--accent)">Export code</a>.</p>
 
   <form id="form">
-    <label for="url">Framer site URL</label>
-    <input id="url" name="url" type="url" required placeholder="https://your-site.framer.website/" autocomplete="url">
+    <label for="url">Site URL</label>
+    <input id="url" name="url" type="url" required placeholder="https://example.com/" autocomplete="url">
     <p class="hint">Export sites you own or are authorised to export.</p>
 
     <div class="row">

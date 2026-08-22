@@ -84,7 +84,15 @@ function makeRunner(workDir: string) {
     });
 
     if (report.pagesExported === 0) {
-      throw new Error('No pages could be exported. Is this a published Framer site?');
+      // Report what actually happened. The previous message asked whether the
+      // input was a Framer site regardless of the real cause, which sent
+      // people looking in the wrong place for a 404 or a timeout.
+      const first = report.pages.find((p) => p.error)?.error;
+      throw new Error(
+        first
+          ? `Could not export this site: ${first}`
+          : 'Could not export this site: no pages were reachable at that URL.',
+      );
     }
 
     // The preview server is what makes an unzipped folder actually runnable.
@@ -174,9 +182,11 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           compileAnimations: full ? false : body.compileAnimations !== false,
           keepRuntime: full,
           includePreview: full,
-          // The Export code page works on any site, so a page that is not
-          // Framer takes the generic path instead of being refused.
-          allowNonFramer: full,
+          // Both pages accept any site. A page that is not Framer takes the
+          // generic path rather than being refused — refusing it told people
+          // their site was the problem when the tool simply had not been asked
+          // to handle it.
+          allowNonFramer: true,
         };
 
         const job = queue.enqueue(jobOptions);
