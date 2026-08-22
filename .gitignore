@@ -24,3 +24,7 @@ Thumbs.db
 
 # Verification output
 verify-*/
+
+# Local editor settings
+.vscode/
+.idea/

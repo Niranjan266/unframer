@@ -31,12 +31,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/niranjan266/unframer.git"
+    "url": "git+https://github.com/Niranjan266/unframer.git"
   },
   "bugs": {
-    "url": "https://github.com/niranjan266/unframer/issues"
+    "url": "https://github.com/Niranjan266/unframer/issues"
   },
-  "homepage": "https://github.com/niranjan266/unframer#readme",
+  "homepage": "https://github.com/Niranjan266/unframer#readme",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
