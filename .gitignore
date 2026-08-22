@@ -1,7 +1,18 @@
 node_modules/
+# Build output
 dist/
+
+# Export output. These are generated sites -- often hundreds of MB -- and must
+# never be committed. Named broadly on purpose: `out/` and `site/` are the CLI
+# defaults, but --out takes any name, so anything that looks like an export
+# archive is ignored too.
+dist.zip
 out*/
 out*.zip
+site/
+site*.zip
+export*/
+export*.zip
 
 # Captured third-party pages used only as local test inputs.
 # See test/fixtures/README.md — the suite skips absent fixtures.

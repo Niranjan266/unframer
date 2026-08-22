@@ -94,6 +94,12 @@ Options
       --json             Print the report as JSON
   -h, --help             Show this help
 
+Export a complete, working copy (recommended)
+  unframer exportsite <url> [--out site] [--base-url https://example.com]
+
+      Keeps every animation, component and 3D visual working, downloads all
+      assets, and includes a local preview server.
+
 Run the web UI and API
   unframer serve [--port 3000] [--concurrency 1]
 
@@ -446,6 +452,81 @@ async function runServe(argv: string[]): Promise<void> {
   process.on('SIGTERM', shutdown);
 }
 
+/**
+ * `exportsite` - one command for the highest-fidelity copy of a site.
+ *
+ * Keeps Framer's runtime so animations, 3D, scroll effects and every component
+ * behave exactly as published; downloads all assets; writes host configs, a
+ * local preview server and a ZIP.
+ *
+ * The preview server matters more than it looks: browsers block ES modules over
+ * file://, so an exported folder that is merely unzipped and double-clicked
+ * renders with no JavaScript at all and looks completely static.
+ */
+async function runExportSite(argv: string[]): Promise<void> {
+  const url = argv.find((a) => /^https?:\/\//i.test(a));
+  if (!url) {
+    console.error('  Usage: unframer exportsite https://your-site.framer.website/');
+    process.exit(1);
+  }
+
+  let outDir = 'site';
+  let baseUrl: string | undefined;
+  let maxPages = 50;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--out' || argv[i] === '-o') outDir = argv[++i] ?? 'site';
+    else if (argv[i] === '--base-url') baseUrl = argv[++i];
+    else if (argv[i] === '--max-pages') maxPages = Number(argv[++i]) || 50;
+  }
+
+  const { writePreviewServer } = await import('./preview.js');
+  const { packageExport } = await import('./package.js');
+
+  console.log('');
+  console.log(`  Exporting ${url}`);
+  console.log('  Full fidelity: runtime, animations, components and all assets.');
+  console.log('');
+
+  const report = await exportSite(url, {
+    outDir,
+    assetMode: 'offline',
+    keepRuntime: true,
+    compileAnimations: false,
+    baseUrl,
+    maxPages,
+    onProgress: (done, total, route, ok) =>
+      console.log(`  [${String(done).padStart(2)}/${total}] ${ok ? '✓' : '✗'} ${route}`),
+    onAssetProgress: (done, total, _u, ok) => {
+      if (!ok || done === total || done % 25 === 0) console.log(`  assets [${done}/${total}]`);
+    },
+  });
+
+  if (report.pagesExported === 0) {
+    console.error('  Nothing could be exported. Is this a published Framer site?');
+    process.exit(3);
+  }
+
+  const preview = await writePreviewServer(outDir, url);
+  const { zip } = await packageExport(outDir, `${resolve(outDir)}.zip`);
+
+  console.log('');
+  console.log('  Export complete');
+  console.log('  ' + '─'.repeat(52));
+  console.log(`  Pages             ${report.pagesExported}`);
+  console.log(`  Assets            ${report.assetsDownloaded}/${report.uniqueAssets} (${fmtBytes(report.assetBytes)})`);
+  console.log(`  Artifacts removed ${report.totalArtifactsRemoved}`);
+  console.log(`  Preview server    ${preview.written.join(', ')}`);
+  console.log(`  ZIP               ${zip.path} (${fmtBytes(zip.bytes)})`);
+  console.log('');
+  console.log('  TO VIEW IT, with animations working:');
+  console.log(`      cd ${resolve(outDir)}`);
+  console.log('      node serve.js          (or double-click start.bat)');
+  console.log('');
+  console.log('  Opening index.html directly will look static - browsers block');
+  console.log('  JavaScript modules loaded from a file path.');
+  console.log('');
+}
+
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
@@ -456,6 +537,11 @@ async function main(): Promise<void> {
 
   if (rawArgs[0] === 'serve') {
     await runServe(rawArgs.slice(1));
+    return;
+  }
+
+  if (rawArgs[0] === 'exportsite') {
+    await runExportSite(rawArgs.slice(1));
     return;
   }
 
