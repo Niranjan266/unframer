@@ -108,6 +108,9 @@ function printPageReport(report: ExtractReport): void {
   console.log(`  Breakpoints       ${report.breakpoints.length}`);
   console.log(`  Animations        ${report.appearIds} id(s) → ${report.appearRulesEmitted} CSS rule(s)`);
   console.log(`  Elements freed    ${report.animatedElements}`);
+  console.log(`  Scroll reveals    ${report.scrollReveals} element(s) → ${report.revealGroups} rule(s)`);
+  console.log(`  Tickers           ${report.tickers}`);
+  if (report.shimBytes > 0) console.log(`  Shim              ${report.shimBytes} B`);
   console.log(`  Assets referenced ${report.assets.length}`);
   console.log(`  Artifacts removed ${totalRemoved}`);
 

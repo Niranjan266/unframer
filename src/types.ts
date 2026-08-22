@@ -56,6 +56,12 @@ export interface ExtractOptions {
   compileAnimations: boolean;
   /** Emit a prefers-reduced-motion escape hatch. */
   reducedMotion: boolean;
+  /**
+   * Reconstruct interactions Framer's runtime used to drive (scroll reveals,
+   * tickers). Disabling forces every hidden element visible instead — safe, but
+   * static.
+   */
+  interactions: boolean;
   /** Base URL of the source site, used to resolve relative links. */
   baseUrl?: string;
 }
@@ -64,6 +70,7 @@ export const DEFAULT_OPTIONS: ExtractOptions = {
   assetMode: 'hotlink',
   compileAnimations: true,
   reducedMotion: true,
+  interactions: true,
 };
 
 /** One class of thing the stripper removed. */
@@ -89,6 +96,14 @@ export interface ExtractReport {
   appearIds: number;
   appearRulesEmitted: number;
   animatedElements: number;
+  /** Elements that were hidden inline with no appear data, now reveal-driven. */
+  scrollReveals: number;
+  /** Distinct reveal from-states, i.e. emitted reveal rules. */
+  revealGroups: number;
+  /** Ticker tracks reconstructed as CSS marquees. */
+  tickers: number;
+  /** Bytes of shim JavaScript added. */
+  shimBytes: number;
   assets: AssetRef[];
   warnings: string[];
 }

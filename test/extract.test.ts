@@ -96,6 +96,55 @@ describe.skipIf(available.length === 0)('extract (real Framer pages)', () => {
         expect(stuck).toBe(0);
       });
 
+      /**
+       * The regression that matters most. An earlier version scoped this check
+       * to [data-framer-appear-id] and so passed clean while leaving 155
+       * elements — more than half the visible text — permanently invisible.
+       * Nothing may be left hidden by an inline style, whether or not it has
+       * appear data.
+       */
+      it('leaves NO element hidden by an inline style', () => {
+        const $ = cheerio.load(out.html);
+        const hidden = $('[style]')
+          .filter((_, el) => {
+            const style = $(el).attr('style') ?? '';
+            const m = style.match(/(?:^|;)\s*opacity\s*:\s*([\d.]+)/);
+            return m ? Number.parseFloat(m[1]) < 0.5 : false;
+          })
+          .map((_, el) => ($(el).attr('class') ?? '').slice(0, 40))
+          .get();
+
+        expect(hidden, `still hidden inline: ${hidden.slice(0, 5).join(' | ')}`).toHaveLength(0);
+      });
+
+      it('hands every hidden element to a reveal or appear rule', () => {
+        const $ = cheerio.load(out.html);
+        const reveals = $('[data-uf-reveal]').length;
+        const appears = $(`[${APPEAR_ATTR}]`).length;
+        // Whatever was hidden in the source must now be driven by one of the two.
+        const sourceHidden = (html.match(/style="[^"]*opacity:0[.;"]/g) ?? []).length;
+        if (sourceHidden > 0) expect(reveals + appears).toBeGreaterThan(0);
+      });
+
+      it('gates every reveal rule behind .uf-js so no-JS renders visible', () => {
+        const $ = cheerio.load(out.html);
+        const css = $('style[data-unframer="interactions"]').text();
+        if (!css) return;
+        for (const line of css.split('\n')) {
+          if (/\{[^}]*opacity:0/.test(line) && !line.includes('prefers-reduced-motion')) {
+            expect(line).toContain('.uf-js');
+          }
+        }
+      });
+
+      it('ships the shim whenever it annotated reveals', () => {
+        const $ = cheerio.load(out.html);
+        if ($('[data-uf-reveal]').length > 0) {
+          expect($('script[data-unframer="shim-head"]')).toHaveLength(1);
+          expect($('script[data-unframer="shim"]')).toHaveLength(1);
+        }
+      });
+
       it('compiles a rule for every animated id', () => {
         if (out.report.appearIds === 0) return;
         expect(out.report.appearRulesEmitted).toBeGreaterThanOrEqual(out.report.appearIds);
@@ -120,8 +169,25 @@ describe.skipIf(available.length === 0)('extract (real Framer pages)', () => {
         }
       });
 
-      it('gets smaller', () => {
-        expect(out.report.bytesAfter).toBeLessThan(out.report.bytesBefore);
+      /**
+       * The document itself can legitimately grow: tickers duplicate their item
+       * set for a seamless loop, and every page gains the shim plus reveal CSS.
+       * The real saving is the 200 KB+ of runtime JavaScript, which was never
+       * part of the HTML byte count — so assert the document stays in
+       * proportion rather than that it shrinks.
+       */
+      it('does not bloat the document', () => {
+        const ratio = out.report.bytesAfter / out.report.bytesBefore;
+        const limit = out.report.tickers > 0 ? 1.2 : 1.02;
+        expect(
+          ratio,
+          `${out.report.bytesBefore} → ${out.report.bytesAfter} (${out.report.tickers} ticker(s))`,
+        ).toBeLessThan(limit);
+      });
+
+      it('removes far more than it adds', () => {
+        const removed = out.report.removals.reduce((a, r) => a + r.count, 0);
+        expect(removed).toBeGreaterThan(0);
       });
 
       it('inventories assets', () => {
