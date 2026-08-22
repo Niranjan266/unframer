@@ -71,7 +71,7 @@ const MIME = {
   '.gltf': 'model/gltf+json',
 };
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   let rel;
   try {
     rel = decodeURIComponent(req.url.split('?')[0]);
@@ -105,9 +105,50 @@ http.createServer((req, res) => {
       res.end(body);
     });
   });
-}).listen(PORT, () => {
-  const url = 'http://localhost:' + PORT + '/';
+});
+
+/*
+ * Another copy of this server, or anything else, may already hold the port.
+ * That is ordinary - people export several sites and preview them - so try the
+ * next few ports instead of dying with a stack trace.
+ */
+const MAX_TRIES = 20;
+let attempt = 0;
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE' && attempt < MAX_TRIES) {
+    attempt++;
+    setImmediate(() => server.listen(PORT + attempt));
+    return;
+  }
+
   console.log('');
+  if (err.code === 'EADDRINUSE') {
+    console.log('  Could not find a free port between ' + PORT + ' and ' + (PORT + MAX_TRIES) + '.');
+    console.log('  Close some other servers, or choose one yourself:');
+    console.log('');
+    console.log('      Windows       set PORT=9000 && node serve.cjs');
+    console.log('      Mac / Linux   PORT=9000 node serve.cjs');
+  } else if (err.code === 'EACCES') {
+    console.log('  Not allowed to use port ' + (PORT + attempt) + '. Try a port above 1024:');
+    console.log('');
+    console.log('      Windows       set PORT=9000 && node serve.cjs');
+    console.log('      Mac / Linux   PORT=9000 node serve.cjs');
+  } else {
+    console.log('  Could not start the preview server: ' + err.message);
+  }
+  console.log('');
+  process.exit(1);
+});
+
+server.on('listening', () => {
+  const actual = server.address().port;
+  const url = 'http://localhost:' + actual + '/';
+
+  console.log('');
+  if (actual !== PORT) {
+    console.log('  Port ' + PORT + ' was busy, so this is on ' + actual + ' instead.');
+  }
   console.log('  Your site is running at ' + url);
   console.log('  Press Ctrl+C to stop.');
   console.log('');
@@ -120,6 +161,8 @@ http.createServer((req, res) => {
     require('child_process').spawn(open[0], open[1], { stdio: 'ignore', detached: true }).unref();
   } catch (e) { /* open it yourself */ }
 });
+
+server.listen(PORT);
 `;
 
 const START_BAT = `@echo off
@@ -187,7 +230,9 @@ To view it properly:
   Mac / Linux  run           ./start.sh
   Any system   run           node serve.cjs
 
-Then open http://localhost:8080/ if it does not open by itself.
+Your browser should open by itself. If not, the address is printed in
+the window that appears - normally http://localhost:8080/, or the next
+free port if 8080 is already in use.
 
 
 TO PUBLISH IT

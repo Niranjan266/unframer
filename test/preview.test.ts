@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdtemp, rm, readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writePreviewServer } from '../src/preview.js';
@@ -98,6 +99,51 @@ describe('writePreviewServer', () => {
         expect((await fetch(base + '/nope.html')).status).toBe(404);
       } finally {
         child.kill();
+      }
+    });
+  });
+
+  /**
+   * People export several sites and preview them, so the port is regularly
+   * taken. The first version died on EADDRINUSE with a raw Node stack trace.
+   */
+  it('finds another port when the first is taken', { timeout: 30_000 }, async () => {
+    await inTempDir(async (dir) => {
+      await writePreviewServer(dir);
+      await writeFile(join(dir, 'index.html'), '<!doctype html><title>ok</title><p>fallback</p>');
+
+      const port = 8500 + Math.floor(Math.random() * 300);
+
+      // Occupy the port the server will try first.
+      const blocker = createServer((_req, res) => res.end('blocker'));
+      await new Promise<void>((r) => blocker.listen(port, r));
+
+      const child = spawn(process.execPath, [join(dir, 'serve.cjs')], {
+        env: { ...process.env, PORT: String(port) },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let out = '';
+      let errOut = '';
+      child.stdout.on('data', (d) => { out += String(d); });
+      child.stderr.on('data', (d) => { errOut += String(d); });
+
+      try {
+        let moved = '';
+        for (let i = 0; i < 40 && !moved; i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          const m = out.match(/running at (http:\/\/localhost:(\d+))\//);
+          if (m) moved = m[1];
+        }
+
+        expect(errOut, 'server crashed instead of moving port').not.toMatch(/EADDRINUSE|throw er/);
+        expect(moved, `never reported a port. stdout: ${out} stderr: ${errOut}`).toBeTruthy();
+        expect(out).toMatch(/was busy/);
+
+        const res = await fetch(moved + '/');
+        expect(await res.text()).toContain('fallback');
+      } finally {
+        child.kill();
+        await new Promise<void>((r) => blocker.close(() => r()));
       }
     });
   });
