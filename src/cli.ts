@@ -103,6 +103,9 @@ Export a complete, working copy (recommended)
 Run the web UI and API
   unframer serve [--port 3000] [--concurrency 1]
 
+Repair exports already on disk (updates start.bat / serve.cjs only)
+  unframer fix-preview <folder> [more folders...]
+
 Verify an export against the live original
   unframer verify <original-url> --export <dir> [options]
 
@@ -528,6 +531,77 @@ async function runExportSite(argv: string[]): Promise<void> {
   console.log('');
 }
 
+/**
+ * `fix-preview` — refresh the launcher inside exports already on disk.
+ *
+ * The preview server is written into each export, so a fix to it does not
+ * reach anything already downloaded. Re-exporting a large site to pick up a
+ * few kilobytes of launcher would be absurd, so this rewrites just those files
+ * in place.
+ */
+async function runFixPreview(argv: string[]): Promise<void> {
+  const { writePreviewServer } = await import('./preview.js');
+  const { existsSync } = await import('node:fs');
+  const { readdir, rm } = await import('node:fs/promises');
+
+  const targets = argv.filter((a) => !a.startsWith('-'));
+  if (targets.length === 0) {
+    console.error('  Usage: unframer fix-preview <folder> [more folders...]');
+    console.error('  Point it at an unzipped export, or at a folder containing several.');
+    process.exit(1);
+  }
+
+  /**
+   * An index.html alone is not enough to call a folder one of our exports.
+   * A Downloads folder can easily contain a stray index.html, and treating it
+   * as an export writes launcher files into the middle of someone's downloads
+   * while fixing nothing — which is exactly what happened the first time.
+   * Require a marker only our exporter produces.
+   */
+  const isExport = (dir: string) =>
+    existsSync(join(dir, 'index.html')) &&
+    (existsSync(join(dir, 'unframer-report.json')) ||
+      existsSync(join(dir, 'serve.cjs')) ||
+      existsSync(join(dir, 'serve.js')));
+
+  // Accept an export folder, a parent holding several, or both.
+  const dirs: string[] = [];
+  for (const target of targets) {
+    const dir = resolve(target);
+    if (!existsSync(dir)) {
+      console.error(`  Not found: ${dir}`);
+      continue;
+    }
+    if (isExport(dir)) dirs.push(dir);
+
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const child = join(dir, entry.name);
+      if (isExport(child)) dirs.push(child);
+    }
+  }
+
+  if (dirs.length === 0) {
+    console.error('  No exports found there. An export folder contains index.html alongside unframer-report.json or serve.cjs.');
+    process.exit(1);
+  }
+
+  console.log('');
+  for (const dir of dirs) {
+    // The very first release shipped serve.js, which fails under any ESM
+    // project; remove it so nobody runs the broken one by mistake.
+    const stale = join(dir, 'serve.js');
+    if (existsSync(stale)) await rm(stale, { force: true });
+
+    await writePreviewServer(dir);
+    console.log(`  Updated  ${dir}`);
+  }
+  console.log('');
+  console.log(`  ${dirs.length} export(s) updated. They now pick a free port automatically.`);
+  console.log('  Double-click start.bat, or run: node serve.cjs');
+  console.log('');
+}
+
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
@@ -543,6 +617,11 @@ async function main(): Promise<void> {
 
   if (rawArgs[0] === 'exportsite') {
     await runExportSite(rawArgs.slice(1));
+    return;
+  }
+
+  if (rawArgs[0] === 'fix-preview') {
+    await runFixPreview(rawArgs.slice(1));
     return;
   }
 
