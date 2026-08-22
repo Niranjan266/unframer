@@ -93,10 +93,10 @@ export const EXPORT_CODE_HTML = `<!doctype html>
   <nav><a href="/">Quick export</a><a href="/exportcode" class="on">Export code</a></nav>
 
   <h1>Export code</h1>
-  <p class="lede">Paste a published Framer URL. You get every page and its complete front-end code, working exactly as it does live.</p>
+  <p class="lede">Paste any site URL. You get every page and its complete front-end code &mdash; HTML, CSS, JavaScript, fonts and media &mdash; working the way it does live.</p>
 
   <div class="caps">
-    <div class="cap"><b>Every page</b>Landing page, nested routes, CMS pages</div>
+    <div class="cap"><b>Any site</b>Framer sites keep full animation; others export as-is</div>
     <div class="cap"><b>Working UI</b>Buttons, navigation, menus, forms</div>
     <div class="cap"><b>Animations</b>Scroll effects, transitions, 3D visuals</div>
     <div class="cap"><b>All assets</b>Images, fonts, video, audio — downloaded</div>
@@ -106,7 +106,7 @@ export const EXPORT_CODE_HTML = `<!doctype html>
 
   <form id="form">
     <label for="url">Site URL</label>
-    <input id="url" type="url" required placeholder="https://your-site.framer.website/" autocomplete="url">
+    <input id="url" type="url" required placeholder="https://example.com/" autocomplete="url">
     <p class="hint">Export sites you own or are authorised to export.</p>
 
     <div class="row">

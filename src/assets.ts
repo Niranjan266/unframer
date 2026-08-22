@@ -21,9 +21,11 @@ export const META_IMAGE_SELECTOR =
 const FONT_RE = /\.(woff2?|ttf|otf|eot)(\?|$)/i;
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)(\?|$)/i;
 const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp|avif)(\?|$)/i;
-const SCRIPT_RE = /\.mjs(\?|$)/i;
+const SCRIPT_RE = /\.(mjs|js)(\?|$)/i;
+const STYLE_RE = /\.css(\?|$)/i;
 
 function classify(url: string): AssetRef['kind'] {
+  if (STYLE_RE.test(url)) return 'style';
   if (SCRIPT_RE.test(url)) return 'script';
   if (FONT_RE.test(url)) return 'font';
   if (VIDEO_RE.test(url)) return 'video';
@@ -56,14 +58,33 @@ export function extractCssUrls(css: string): string[] {
  * Inventory every asset the document references: img src/srcset, source
  * srcset, video, link href, and url() inside inline styles and stylesheets.
  */
-export function inventoryAssets($: CheerioAPI, includeRuntime = false): AssetRef[] {
+export function inventoryAssets(
+  $: CheerioAPI,
+  includeRuntime = false,
+  includeAllSubresources = false,
+  baseUrl?: string,
+): AssetRef[] {
   const seen = new Set<string>();
   const assets: AssetRef[] = [];
 
   const add = (raw: string | undefined) => {
     if (!raw) return;
-    const url = raw.trim();
-    if (!url || url.startsWith('data:') || url.startsWith('#')) return;
+    const value = raw.trim();
+    if (!value || value.startsWith('data:') || value.startsWith('#')) return;
+
+    // Ordinary sites reference assets by relative or root-relative path
+    // (`/css/app.css`), which is not fetchable on its own. Framer uses absolute
+    // CDN URLs throughout, so this only shows up once you leave Framer — and
+    // when it does, the site loses its stylesheets entirely.
+    let url = value;
+    if (baseUrl && !/^https?:\/\//i.test(value)) {
+      try {
+        url = new URL(value, baseUrl).toString();
+      } catch {
+        return;
+      }
+    }
+
     if (seen.has(url)) return;
     seen.add(url);
     assets.push({ url, kind: classify(url) });
@@ -88,12 +109,25 @@ export function inventoryAssets($: CheerioAPI, includeRuntime = false): AssetRef
   // Framer's runtime modules, only when we are keeping them. They import each
   // other by relative path, so downloading the set into one directory is enough
   // for hydration to work offline.
-  if (includeRuntime) {
+  if (includeRuntime || includeAllSubresources) {
     $('script[src]').each((_, el) => {
       const src = $(el).attr('src');
-      if (src && SCRIPT_RE.test(src)) add(src);
+      if (!src) return;
+      if (includeAllSubresources || SCRIPT_RE.test(src)) add(src);
     });
     $('link[rel="modulepreload"][href]').each((_, el) => add($(el).attr('href')));
+  }
+
+  // A generic site keeps its CSS in separate files, and those files reference
+  // more assets in turn — handled by a second pass once they are on disk.
+  if (includeAllSubresources) {
+    $('link[rel="preload"][href], link[rel="prefetch"][href]').each((_, el) =>
+      add($(el).attr('href')),
+    );
+    $('[data-src], [data-background-image]').each((_, el) => {
+      add($(el).attr('data-src'));
+      add($(el).attr('data-background-image'));
+    });
   }
 
   $('style').each((_, el) => {

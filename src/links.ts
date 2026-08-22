@@ -174,7 +174,7 @@ export function auditForms($: CheerioAPI): { count: number; warnings: string[] }
       $(el).attr('data-unframer-form', 'needs-endpoint');
     });
     warnings.push(
-      `${forms.length} form(s) found. Framer posts these to its own endpoints, which stop working once self-hosted — repoint each \`action\` at your own handler (Formspree, Netlify Forms, or similar). They are marked with data-unframer-form="needs-endpoint".`,
+      `${forms.length} form(s) found. Their submit endpoint belongs to the original site and stops working once self-hosted — repoint each \`action\` at your own handler (Formspree, Netlify Forms, or similar). They are marked with data-unframer-form="needs-endpoint".`,
     );
   }
 

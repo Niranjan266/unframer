@@ -30,7 +30,8 @@ const KIND_DIR: Record<AssetRef['kind'], string> = {
   image: 'assets/images',
   font: 'assets/fonts',
   video: 'assets/media',
-  script: 'assets/runtime',
+  script: 'assets/scripts',
+  style: 'assets/styles',
   other: 'assets/files',
 };
 
@@ -50,6 +51,8 @@ const MIME_EXT: Record<string, string> = {
   'video/mp4': '.mp4',
   'video/webm': '.webm',
   'text/css': '.css',
+  'application/javascript': '.js',
+  'text/javascript': '.js',
 };
 
 export interface DownloadedAsset {
@@ -88,11 +91,16 @@ export function localNameFor(url: string, kind: AssetRef['kind'], contentType?: 
 
   const rawBase = basename(pathname) || 'asset';
 
-  // Runtime modules keep their exact filename. They import each other by
-  // relative path — `./rolldown-runtime.DhnBybyj.mjs` — so appending our own
-  // hash silently breaks every one of those imports and the page never
-  // hydrates. Framer already content-hashes these names, so they are unique.
-  if (kind === 'script') return `${KIND_DIR[kind]}/${rawBase}`;
+  // ES modules keep their exact filename. They import each other by relative
+  // path — `./rolldown-runtime.DhnBybyj.mjs` — so appending our own hash
+  // silently breaks every one of those imports and the page never hydrates.
+  // Framer already content-hashes these names, so they stay unique.
+  //
+  // Classic scripts are NOT exempt: nothing imports them by name, and two
+  // different sites' `app.js` would otherwise overwrite each other.
+  if (kind === 'script' && /\.mjs$/i.test(rawBase)) {
+    return `assets/runtime/${rawBase}`;
+  }
   let ext = extname(rawBase);
   let stem = ext ? rawBase.slice(0, -ext.length) : rawBase;
 

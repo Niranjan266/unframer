@@ -491,6 +491,7 @@ async function runExportSite(argv: string[]): Promise<void> {
     outDir,
     assetMode: 'offline',
     keepRuntime: true,
+    allowNonFramer: true,
     compileAnimations: false,
     baseUrl,
     maxPages,
@@ -520,7 +521,7 @@ async function runExportSite(argv: string[]): Promise<void> {
   console.log('');
   console.log('  TO VIEW IT, with animations working:');
   console.log(`      cd ${resolve(outDir)}`);
-  console.log('      node serve.js          (or double-click start.bat)');
+  console.log('      node serve.cjs         (or double-click start.bat)');
   console.log('');
   console.log('  Opening index.html directly will look static - browsers block');
   console.log('  JavaScript modules loaded from a file path.');

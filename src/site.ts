@@ -40,6 +40,8 @@ export interface SiteExportOptions extends DiscoverOptions {
   compileAnimations?: boolean;
   /** Keep Framer's runtime for full-fidelity animation and interaction. */
   keepRuntime?: boolean;
+  /** Export sites that are not Framer. Skips the Framer-specific transforms. */
+  allowNonFramer?: boolean;
   /** Public URL the export will live at, used for canonical/og:url and sitemap. */
   baseUrl?: string;
   onProgress?: (done: number, total: number, route: string, ok: boolean) => void;
@@ -117,7 +119,12 @@ export async function exportSite(
   for (const route of discovery.routes) {
     const html = pageHtml.get(route.path);
     if (!html) continue;
-    for (const asset of inventoryAssets(cheerio.load(html), options.keepRuntime ?? false)) {
+    for (const asset of inventoryAssets(
+      cheerio.load(html),
+      options.keepRuntime ?? false,
+      (options.keepRuntime ?? false) || (options.allowNonFramer ?? false),
+      route.url,
+    )) {
       if (!allAssets.has(asset.url)) allAssets.set(asset.url, asset);
     }
   }
@@ -129,6 +136,18 @@ export async function exportSite(
     });
     assetMap = download.map;
     warnings.push(...download.warnings);
+
+    // Second pass: stylesheets reference their own images and fonts, resolved
+    // against the stylesheet's address rather than the page's.
+    const { localizeStylesheets } = await import('./stylesheets.js');
+    const sheets = await localizeStylesheets(outDir, download, concurrency);
+    if (sheets.references > 0) {
+      warnings.push(
+        `Stylesheets: ${sheets.references} reference(s) found, ${sheets.assetsFound} additional asset(s) downloaded, ${sheets.filesRewritten} file(s) rewritten.`,
+      );
+    }
+    warnings.push(...sheets.warnings);
+    assetMap = download.map;
   }
 
   // --- D. extract, rewrite, write -----------------------------------------
@@ -150,6 +169,7 @@ export async function exportSite(
             assetMode,
             compileAnimations: options.compileAnimations ?? true,
             keepRuntime: options.keepRuntime ?? false,
+            allowNonFramer: options.allowNonFramer ?? false,
             baseUrl: route.url,
           },
           ($, pageWarnings) => {
@@ -163,7 +183,7 @@ export async function exportSite(
             pageWarnings.push(...linkResult.warnings);
 
             if (assetMode === 'offline' && assetMap.size > 0) {
-              const localized = localizeAssets($, assetMap, route.path);
+              const localized = localizeAssets($, assetMap, route.path, route.url);
               const meta = localizeMetaImages($, assetMap, options.baseUrl);
               assetsLocalized = localized.rewritten + meta.rewritten;
 

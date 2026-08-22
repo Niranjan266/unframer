@@ -72,6 +72,16 @@ export interface ExtractOptions {
    * Framer's React bundle rather than being framework-free.
    */
   keepRuntime: boolean;
+  /**
+   * Process a page even when it is not recognisably Framer.
+   *
+   * The Framer-specific transforms are skipped entirely — there is no appear
+   * spec to compile and no runtime to reason about — so the generic path is
+   * limited to what is safe on unknown markup: remove trackers, localise
+   * assets, rewrite links. Running the Framer strip list against arbitrary
+   * HTML would mangle it rather than clean it.
+   */
+  allowNonFramer: boolean;
   /** Base URL of the source site, used to resolve relative links. */
   baseUrl?: string;
 }
@@ -82,6 +92,7 @@ export const DEFAULT_OPTIONS: ExtractOptions = {
   reducedMotion: true,
   interactions: true,
   keepRuntime: false,
+  allowNonFramer: false,
 };
 
 /** One class of thing the stripper removed. */
@@ -93,7 +104,7 @@ export interface RemovalRecord {
 
 export interface AssetRef {
   url: string;
-  kind: 'image' | 'font' | 'video' | 'script' | 'other';
+  kind: 'image' | 'font' | 'video' | 'script' | 'style' | 'other';
 }
 
 export interface ExtractReport {
@@ -117,6 +128,8 @@ export interface ExtractReport {
   shimBytes: number;
   /** Framer runtime modules kept and localised (high-fidelity mode). */
   runtimeModules: number;
+  /** Which pipeline ran. */
+  platform: 'framer' | 'generic';
   assets: AssetRef[];
   warnings: string[];
 }

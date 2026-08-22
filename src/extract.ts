@@ -88,8 +88,54 @@ export function extract(
   const $ = cheerio.load(html);
 
   const detection = detectFramer($, html);
-  if (!detection.isFramerSite) {
+  const isFramer = detection.isFramerSite;
+
+  if (!isFramer && !opts.allowNonFramer) {
     throw new NotAFramerSiteError(detection.signals);
+  }
+
+  // Generic path: no appear spec to compile, no runtime to reason about, and
+  // no Framer structures to strip. Limited on purpose to what is safe on
+  // unknown markup — remove trackers, localise assets, rewrite links. Running
+  // the Framer strip list here would mangle the page rather than clean it.
+  if (!isFramer) {
+    const genericWarnings: string[] = [];
+    const { removals: genericRemovals } = stripAll($, true);
+
+    const protocolFixed = normalizeProtocolRelative($);
+    if (protocolFixed > 0) {
+      genericRemovals.push({
+        kind: 'rewrite',
+        detail: 'Protocol-relative URLs normalised to https',
+        count: protocolFixed,
+      });
+    }
+
+    if (onDocument) onDocument($, genericWarnings);
+
+    const genericReport: ExtractReport = {
+      isFramerSite: false,
+      platform: 'generic',
+      bytesBefore: Buffer.byteLength(html, 'utf8'),
+      bytesAfter: 0,
+      removals: genericRemovals,
+      breakpoints: [],
+      appearIds: 0,
+      appearRulesEmitted: 0,
+      animatedElements: 0,
+      scrollReveals: 0,
+      revealGroups: 0,
+      tickers: 0,
+      shimBytes: 0,
+      runtimeModules: 0,
+      assets: inventoryAssets($, true, true, opts.baseUrl),
+      warnings: genericWarnings,
+      sourceUrl: opts.baseUrl,
+    };
+
+    const genericHtml = $.html();
+    genericReport.bytesAfter = Buffer.byteLength(genericHtml, 'utf8');
+    return { html: genericHtml, report: genericReport };
   }
 
   // --- read the declarative data BEFORE anything strips it -----------------
@@ -180,13 +226,14 @@ export function extract(
       count: protocolFixes,
     });
   }
-  const assets = inventoryAssets($, opts.keepRuntime);
+  const assets = inventoryAssets($, opts.keepRuntime, opts.keepRuntime, opts.baseUrl);
 
   // Offline localisation happens in the multi-page orchestrator, which is the
   // only layer that sees the whole site and can download each asset once.
 
   const report: ExtractReport = {
     isFramerSite: true,
+    platform: 'framer',
     framerBuild: detection.build,
     bytesBefore: Buffer.byteLength(html, 'utf8'),
     bytesAfter: 0,

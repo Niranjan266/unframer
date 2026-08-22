@@ -33,8 +33,21 @@ function localFor(
   url: string,
   map: ReadonlyMap<string, string>,
   prefix: string,
+  baseUrl?: string,
 ): string | null {
-  const local = map.get(url.trim());
+  const value = url.trim();
+  let local = map.get(value);
+
+  // The map is keyed by absolute URL, but the document may reference the same
+  // asset by relative path, so resolve before giving up.
+  if (!local && baseUrl && !/^https?:\/\//i.test(value)) {
+    try {
+      local = map.get(new URL(value, baseUrl).toString());
+    } catch {
+      /* not resolvable */
+    }
+  }
+
   return local ? `${prefix}${local}` : null;
 }
 
@@ -47,6 +60,7 @@ export function localizeAssets(
   $: CheerioAPI,
   map: ReadonlyMap<string, string>,
   currentRoute: string,
+  baseUrl?: string,
 ): LocalizeResult {
   const prefix = relativePrefix(currentRoute);
   const result: LocalizeResult = { rewritten: 0, leftRemote: 0 };
@@ -55,7 +69,7 @@ export function localizeAssets(
     $(selector).each((_, el) => {
       const value = $(el).attr(attr);
       if (!value || value.startsWith('data:')) return;
-      const local = localFor(value, map, prefix);
+      const local = localFor(value, map, prefix, baseUrl);
       if (local) {
         $(el).attr(attr, local);
         result.rewritten++;
@@ -86,7 +100,7 @@ export function localizeAssets(
         const parts = trimmed.split(/\s+/);
         const url = parts[0];
         const descriptor = parts.slice(1).join(' ');
-        const local = localFor(url, map, prefix);
+        const local = localFor(url, map, prefix, baseUrl);
         if (local) {
           changed = true;
           result.rewritten++;
@@ -104,7 +118,7 @@ export function localizeAssets(
   $('style').each((_, el) => {
     const css = $(el).html();
     if (!css || !css.includes('url(')) return;
-    const next = rewriteCssUrls(css, map, prefix, result);
+    const next = rewriteCssUrls(css, map, prefix, result, baseUrl);
     if (next !== css) $(el).html(next);
   });
 
@@ -112,7 +126,7 @@ export function localizeAssets(
   $('[style]').each((_, el) => {
     const style = $(el).attr('style');
     if (!style || !style.includes('url(')) return;
-    const next = rewriteCssUrls(style, map, prefix, result);
+    const next = rewriteCssUrls(style, map, prefix, result, baseUrl);
     if (next !== style) $(el).attr('style', next);
   });
 
@@ -128,12 +142,13 @@ export function rewriteCssUrls(
   map: ReadonlyMap<string, string>,
   prefix: string,
   result?: LocalizeResult,
+  baseUrl?: string,
 ): string {
   return css.replace(
     /url\(\s*(['"]?)([^'")]+)\1\s*\)/g,
     (whole, quote: string, url: string) => {
       if (url.startsWith('data:')) return whole;
-      const local = localFor(url, map, prefix);
+      const local = localFor(url, map, prefix, baseUrl);
       if (local) {
         if (result) result.rewritten++;
         return `url(${quote}${local}${quote})`;

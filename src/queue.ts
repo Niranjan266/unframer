@@ -34,6 +34,8 @@ export interface JobOptions {
    * file://. That reads as a broken export.
    */
   includePreview?: boolean;
+  /** Export non-Framer sites too. */
+  allowNonFramer?: boolean;
 }
 
 export interface JobProgress {

@@ -93,7 +93,7 @@ export const UI_HTML = `<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <nav><a href="/" class="on">Quick export</a><a href="/exportcode">Export code</a></nav>
+  <nav><a href="/" class="on">Quick export</a><a href="/exportcode">Export code (any site)</a></nav>
   <h1>Unframer</h1>
   <p class="lede">Convert a published Framer site into portable HTML, CSS and JavaScript you can host anywhere.</p>
 

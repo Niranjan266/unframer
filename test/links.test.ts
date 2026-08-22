@@ -122,7 +122,9 @@ describe('auditForms', () => {
     const result = auditForms($);
     expect(result.count).toBe(1);
     expect($('form').attr('data-unframer-form')).toBe('needs-endpoint');
-    expect(result.warnings.join(' ')).toMatch(/stop working once self-hosted/);
+    // Worded for any site, not just Framer, since the exporter now handles both.
+    expect(result.warnings.join(' ')).toMatch(/stops? working once self-hosted/);
+    expect(result.warnings.join(' ')).not.toMatch(/Framer/);
   });
 
   it('says nothing when there are no forms', () => {

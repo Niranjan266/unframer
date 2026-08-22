@@ -73,6 +73,7 @@ function makeRunner(workDir: string) {
       maxPages: job.options.maxPages,
       compileAnimations: job.options.compileAnimations,
       keepRuntime: job.options.keepRuntime ?? false,
+      allowNonFramer: job.options.allowNonFramer ?? false,
       onProgress: (done, total, route, ok) =>
         onProgress(`${ok ? 'Exported' : 'Failed'} ${route} (${done}/${total})`),
       onAssetProgress: (done, total, _url, ok) => {
@@ -173,6 +174,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           compileAnimations: full ? false : body.compileAnimations !== false,
           keepRuntime: full,
           includePreview: full,
+          // The Export code page works on any site, so a page that is not
+          // Framer takes the generic path instead of being refused.
+          allowNonFramer: full,
         };
 
         const job = queue.enqueue(jobOptions);
