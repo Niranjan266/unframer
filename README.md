@@ -2,7 +2,7 @@
 
 Converts a published Framer site into portable, framework-free HTML/CSS that runs on any static host.
 
-**Status: Phase 04 complete** — whole-site export, self-contained with `--offline`, interactions reconstructed.
+**Status: Phase 05 complete** — whole-site export, self-contained with `--offline`, interactions reconstructed, and an automated harness that verifies the result against the live original.
 
 ```bash
 npm install
@@ -150,13 +150,47 @@ The threshold matters too: elements below `opacity: 0.05` **containing text** ar
 
 Verified at 1512 / 900 / 390 px against `framer.university` (the 887 KB page that exposed the bug) and `novo` (3 tickers): zero elements stuck with text, zero trapped characters, zero broken images, zero external scripts, zero badge nodes, zero tracker requests — and all three tickers animating with track widths far exceeding their containers.
 
+### The automated harness
+
+```bash
+npx tsx src/cli.ts verify https://your-site.framer.website/ --export dist
+```
+
+Loads the original and the export side by side in real Chromium, at every viewport, and compares them:
+
+```
+VERIFICATION PASSED
+Routes            2/2 passed
+Text retention    100.0% (worst)
+Pixel difference  11.71% (worst)
+HTML structure    0 introduced, 4 pre-existing in source
+```
+
+Three independent signals, because no single one suffices:
+
+- **Content parity** — visible text in the export against the original. This is the assertion that catches content disappearing, and it compares *visible* text, since `innerText` returns text inside `opacity:0` elements.
+- **Visual diff** — pixel comparison at each viewport, with diff images written to `verify-diffs/`.
+- **Self-checks** — no trackers, no badge, no external scripts, nothing stuck hidden.
+
+Both pages are scrolled end to end and settled deterministically before measuring. The original hides content until scrolled too, so measuring either one cold proves nothing.
+
+**Pixel difference is a gross-damage tripwire, not a fidelity claim.** A correct export differs from the original by construction: the "Made in Framer" badge is deliberately gone, and unreconstructed parallax settles elsewhere. Inspecting a real diff showed those two causes account for most of an 11.7% difference at 1512px. Tightening the threshold would fail every correct export; quietly raising it until things pass would make it meaningless. So the *hard* gates sit on the unambiguous signals, and the pixel number is reported with its diff image for a human to judge.
+
+**HTML validation is measured against the source, not in the absolute.** Framer emits a `<style>` inside a `<div>`, present identically in the original. Only issues the export *introduced* fail the run — currently zero.
+
+Three more traps were found while building the harness itself, each of which produced a confidently wrong result:
+
+- `reducedMotion: 'reduce'`, set for screenshot stability, changes what the **original** renders — Framer's runtime leaves an element at `opacity:0` under it, hiding 422 characters — so the export was being compared against a degraded baseline and appeared to have *more* content than the original.
+- Settling for 150 ms against a 700 ms transition measured elements mid-fade and reported an 80% content loss that did not exist. Sleeping longer only makes that rarer; finishing the animations removes it.
+- `finish()` throws on infinite effects, so the ticker crashed the check.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-170 tests: unit coverage of the compiler, easing, breakpoint, route, link, asset-localisation and interaction logic, plus golden-file assertions against four real captured Framer pages.
+183 tests: unit coverage of the compiler, easing, breakpoint, route, link, asset-localisation, interaction, serving and validation logic, plus golden-file assertions against four real captured Framer pages.
 
 The most important of those asserts that **no element is left hidden by an inline style** — checked across every element, not just animated ones. That is the regression that shipped once.
 
@@ -168,8 +202,8 @@ The most important of those asserts that **no element is left hidden by an inlin
 | 02 | Multi-page: sitemap/crawl discovery, link rewriting | **done** |
 | 03 | Offline assets: throttled downloader, `srcset` variants, fonts | **done** |
 | 04 | Interaction shim: scroll reveals, tickers | **done** |
-| 05 | Verification harness: Playwright, visual diff, W3C, Lighthouse | next |
-| 06 | Product surface: queue, UI, packaging | |
+| 05 | Verification harness: Playwright, visual diff, HTML validation | **done** |
+| 06 | Product surface: queue, UI, packaging | next |
 
 Only entry animations are declarative. Scroll reveals, hover variants, tickers and accordions live inside the compiled React bundle and must be reconstructed from DOM signatures — that is phase 04, and the highest-risk part of the project.
 
