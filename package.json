@@ -1,0 +1,28 @@
+{
+  "name": "unframer",
+  "version": "0.1.0",
+  "description": "Convert a published Framer site into portable, framework-free HTML/CSS/JS",
+  "type": "module",
+  "bin": {
+    "unframer": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "postcss": "^8.4.47"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

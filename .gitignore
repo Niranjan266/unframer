@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out*/
+
+# Captured third-party pages used only as local test inputs.
+# See test/fixtures/README.md — the suite skips absent fixtures.
+test/fixtures/*.html
+
+*.log
+.DS_Store
+Thumbs.db

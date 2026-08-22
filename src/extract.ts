@@ -1,0 +1,150 @@
+/**
+ * Extraction orchestrator.
+ *
+ * Sequencing is the whole game here. The appear spec and breakpoint manifest
+ * must be READ before the strip pass deletes them, and the compiled CSS must be
+ * injected before the inline initial state is neutralised — otherwise there is
+ * a window where elements have neither their inline state nor a rule to drive
+ * them, which is precisely the invisible-page failure this project exists to
+ * avoid.
+ */
+
+import * as cheerio from 'cheerio';
+import type { CheerioAPI } from 'cheerio';
+import type { ExtractOptions, ExtractReport } from './types.js';
+import { DEFAULT_OPTIONS } from './types.js';
+import { detectFramer } from './detect.js';
+import { resolveBreakpoints } from './breakpoints.js';
+import {
+  parseAppearSpec,
+  compileAppearCss,
+  neutralizeInlineInitialState,
+  forceVisibleCss,
+  APPEAR_ATTR,
+} from './appear.js';
+import { stripAll } from './strip.js';
+import { inventoryAssets, normalizeProtocolRelative } from './assets.js';
+
+export interface ExtractResult {
+  html: string;
+  report: ExtractReport;
+}
+
+export class NotAFramerSiteError extends Error {
+  constructor(public readonly signals: string[]) {
+    super(
+      `This does not look like a published Framer site (signals found: ${
+        signals.length ? signals.join(', ') : 'none'
+      }). Refusing to run the Framer strip pipeline on it.`,
+    );
+    this.name = 'NotAFramerSiteError';
+  }
+}
+
+/** Inject the compiled animation stylesheet at the end of <head>. */
+function injectCss($: CheerioAPI, css: string, marker: string): void {
+  if (!css.trim()) return;
+  const style = `<style data-unframer="${marker}">${css}</style>`;
+  const head = $('head');
+  if (head.length > 0) head.append(style);
+  else $.root().prepend(style);
+}
+
+/** Leave a short provenance comment so the output is self-describing. */
+function injectProvenance($: CheerioAPI, report: ExtractReport): void {
+  const stripped = report.removals.reduce((a, r) => a + r.count, 0);
+  const note = `\n  Exported with Unframer — portable static output.\n  ${stripped} platform artifact(s) removed; ${report.appearRulesEmitted} animation rule(s) compiled to CSS.\n`;
+  $('head').prepend(`<!--${note}-->`);
+}
+
+/**
+ * Turn a published Framer page into portable static HTML.
+ *
+ * @throws NotAFramerSiteError when the input is not recognisably Framer output.
+ */
+export function extract(
+  html: string,
+  options: Partial<ExtractOptions> = {},
+): ExtractResult {
+  const opts: ExtractOptions = { ...DEFAULT_OPTIONS, ...options };
+  // Default (parse5) load: spec-correct parsing and serialisation, which
+  // matters because the output has to survive W3C validation.
+  const $ = cheerio.load(html);
+
+  const detection = detectFramer($, html);
+  if (!detection.isFramerSite) {
+    throw new NotAFramerSiteError(detection.signals);
+  }
+
+  // --- read the declarative data BEFORE anything strips it -----------------
+  const breakpoints = resolveBreakpoints($);
+  const appearSpec = parseAppearSpec($);
+  const appearIds = Object.keys(appearSpec).length;
+  const animatedElements = $(`[${APPEAR_ATTR}]`).length;
+
+  const warnings: string[] = [];
+  let appearRulesEmitted = 0;
+
+  if (opts.compileAnimations && appearIds > 0) {
+    const compiled = compileAppearCss(appearSpec, breakpoints, opts.reducedMotion);
+    injectCss($, compiled.css, 'appear');
+    appearRulesEmitted = compiled.rulesEmitted;
+    warnings.push(...compiled.warnings);
+
+    if (breakpoints.length === 0 && appearIds > 0) {
+      warnings.push(
+        'No breakpoint manifest found; responsive animation variants could not be scoped.',
+      );
+    }
+  } else if (appearIds > 0 || animatedElements > 0) {
+    // Not compiling, but the inline initial state still has to go or the page
+    // renders blank. Force the final state instead.
+    injectCss($, forceVisibleCss(), 'appear-disabled');
+  }
+
+  // Safe to remove the inline pre-animation state now that CSS is in place.
+  const neutralized = animatedElements > 0 ? neutralizeInlineInitialState($) : 0;
+
+  // --- strip ---------------------------------------------------------------
+  const { removals, warnings: stripWarnings } = stripAll($);
+  warnings.push(...stripWarnings);
+
+  // --- assets --------------------------------------------------------------
+  const protocolFixes = normalizeProtocolRelative($);
+  if (protocolFixes > 0) {
+    removals.push({
+      kind: 'rewrite',
+      detail: 'Protocol-relative URLs normalised to https',
+      count: protocolFixes,
+    });
+  }
+  const assets = inventoryAssets($);
+
+  if (opts.assetMode === 'offline') {
+    warnings.push(
+      'Offline asset mode is not implemented yet (phase 03); assets remain CDN-hotlinked.',
+    );
+  }
+
+  const report: ExtractReport = {
+    isFramerSite: true,
+    framerBuild: detection.build,
+    bytesBefore: Buffer.byteLength(html, 'utf8'),
+    bytesAfter: 0,
+    removals,
+    breakpoints,
+    appearIds,
+    appearRulesEmitted,
+    animatedElements: neutralized,
+    assets,
+    warnings,
+    sourceUrl: opts.baseUrl,
+  };
+
+  injectProvenance($, report);
+
+  const out = $.html();
+  report.bytesAfter = Buffer.byteLength(out, 'utf8');
+
+  return { html: out, report };
+}
