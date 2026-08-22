@@ -18,7 +18,7 @@ import { exportSite } from './site.js';
 import { packageExport } from './package.js';
 import { ExportQueue, toJobView, type Job, type JobOptions } from './queue.js';
 import { assertPublicUrl, BlockedUrlError } from './ssrf.js';
-import { UI_HTML } from './ui.js';
+import { UI_HTML, EXPORT_CODE_HTML } from './ui.js';
 
 /** Cap on request body size, so a client cannot exhaust memory. */
 const MAX_BODY_BYTES = 16 * 1024;
@@ -72,6 +72,7 @@ function makeRunner(workDir: string) {
       baseUrl: job.options.baseUrl,
       maxPages: job.options.maxPages,
       compileAnimations: job.options.compileAnimations,
+      keepRuntime: job.options.keepRuntime ?? false,
       onProgress: (done, total, route, ok) =>
         onProgress(`${ok ? 'Exported' : 'Failed'} ${route} (${done}/${total})`),
       onAssetProgress: (done, total, _url, ok) => {
@@ -83,6 +84,13 @@ function makeRunner(workDir: string) {
 
     if (report.pagesExported === 0) {
       throw new Error('No pages could be exported. Is this a published Framer site?');
+    }
+
+    // The preview server is what makes an unzipped folder actually runnable.
+    if (job.options.includePreview) {
+      onProgress('Adding preview server');
+      const { writePreviewServer } = await import('./preview.js');
+      await writePreviewServer(dir, job.options.url);
     }
 
     onProgress('Packaging');
@@ -119,6 +127,15 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         return;
       }
 
+      if (req.method === 'GET' && (path === '/exportcode' || path === '/exportcode/')) {
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(EXPORT_CODE_HTML);
+        return;
+      }
+
       // --- create a job -----------------------------------------------------
       if (req.method === 'POST' && path === '/api/jobs') {
         const body = await readJson(req);
@@ -141,14 +158,21 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         }
 
         const requestedPages = Number(body.maxPages);
+
+        // "full" is the exportcode pipeline: keep the runtime, download every
+        // asset, and ship a preview server so the result actually runs.
+        const full = body.mode === 'full';
+
         const jobOptions: JobOptions = {
           url: target.toString(),
-          assetMode: body.assetMode === 'offline' ? 'offline' : 'hotlink',
+          assetMode: full || body.assetMode === 'offline' ? 'offline' : 'hotlink',
           baseUrl: typeof body.baseUrl === 'string' && body.baseUrl ? body.baseUrl : undefined,
           maxPages: Number.isFinite(requestedPages)
             ? Math.min(Math.max(1, requestedPages), maxPagesLimit)
             : Math.min(25, maxPagesLimit),
-          compileAnimations: body.compileAnimations !== false,
+          compileAnimations: full ? false : body.compileAnimations !== false,
+          keepRuntime: full,
+          includePreview: full,
         };
 
         const job = queue.enqueue(jobOptions);

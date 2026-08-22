@@ -7,6 +7,8 @@
  * its own.
  */
 
+export { EXPORT_CODE_HTML } from './ui-exportcode.js';
+
 export const UI_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -33,7 +35,10 @@ export const UI_HTML = `<!doctype html>
     font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap { max-width:760px; margin:0 auto; padding:48px 24px 80px }
+  .wrap { max-width:760px; margin:0 auto; padding:36px 24px 80px }
+  nav { display:flex; gap:18px; margin-bottom:28px; font-size:.9rem }
+  nav a { color:var(--muted); text-decoration:none; padding-bottom:4px }
+  nav a.on { color:var(--ink); font-weight:600; border-bottom:2px solid var(--accent) }
   h1 { font-size:2rem; letter-spacing:-.03em; margin:0 0 6px }
   .lede { color:var(--ink-2); margin:0 0 32px }
   form { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:22px }
@@ -88,6 +93,7 @@ export const UI_HTML = `<!doctype html>
 </head>
 <body>
 <div class="wrap">
+  <nav><a href="/" class="on">Quick export</a><a href="/exportcode">Export code</a></nav>
   <h1>Unframer</h1>
   <p class="lede">Convert a published Framer site into portable HTML, CSS and JavaScript you can host anywhere.</p>
 

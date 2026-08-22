@@ -24,6 +24,16 @@ export interface JobOptions {
   baseUrl?: string;
   maxPages: number;
   compileAnimations: boolean;
+  /** Keep Framer's runtime so animations and components behave as published. */
+  keepRuntime?: boolean;
+  /**
+   * Write a preview server into the export.
+   *
+   * Without it, someone who unzips the folder and opens index.html sees the
+   * page with no JavaScript at all, because browsers block ES modules over
+   * file://. That reads as a broken export.
+   */
+  includePreview?: boolean;
 }
 
 export interface JobProgress {
@@ -57,6 +67,8 @@ export interface JobView {
   error?: string;
   downloadUrl?: string;
   zipBytes?: number;
+  /** Which pipeline produced this job, for the UI to label it. */
+  mode?: 'clean' | 'full';
   summary?: {
     pagesExported: number;
     pagesFailed: number;
@@ -183,6 +195,7 @@ export function toJobView(job: Job): JobView {
     error: job.error,
     downloadUrl: job.status === 'done' ? `/api/jobs/${job.id}/download` : undefined,
     zipBytes: job.zipBytes,
+    mode: job.options.keepRuntime ? 'full' : 'clean',
     summary: job.report
       ? {
           pagesExported: job.report.pagesExported,
