@@ -152,6 +152,109 @@ export const VERIFY_SCRIPT = `(function () {
   };
 })()`;
 
+/**
+ * Content-parity probe, run on BOTH the original site and the export.
+ *
+ * This is the check that catches content going missing, and it is deliberately
+ * not `innerText`: `innerText` happily returns text sitting inside an
+ * `opacity:0` element, so a page can report full text while showing none of it.
+ * That is exactly how an export shipped with half its content invisible while
+ * every assertion passed.
+ *
+ * "Visible" here means the element and its whole ancestor chain are rendered —
+ * not `display:none`, not `visibility:hidden`, and not effectively transparent.
+ * Comparing the export's visible text against the original's is the only
+ * assertion that fails when content silently disappears.
+ */
+export const CONTENT_PROBE_SCRIPT = `(function () {
+  function visible(el) {
+    for (var node = el; node && node !== document.documentElement; node = node.parentElement) {
+      var cs = getComputedStyle(node);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      if (parseFloat(cs.opacity) < 0.05) return false;
+    }
+    return true;
+  }
+
+  // Collect text from leaf-ish elements so nested nodes are not counted twice.
+  var words = [];
+  var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  var node;
+  while ((node = walker.nextNode())) {
+    var text = (node.nodeValue || '').replace(/\\s+/g, ' ').trim();
+    if (!text) continue;
+    var parent = node.parentElement;
+    if (!parent) continue;
+    if (parent.closest('script,style,noscript,template')) continue;
+    if (!visible(parent)) continue;
+    words.push(text);
+  }
+
+  var joined = words.join(' ');
+
+  var imgs = Array.prototype.slice.call(document.querySelectorAll('img'));
+  return {
+    visibleText: joined,
+    visibleTextChars: joined.length,
+    visibleTextWords: joined ? joined.split(/\\s+/).length : 0,
+    headings: Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3'))
+      .filter(visible).map(function (h) { return (h.textContent || '').trim(); }).filter(Boolean),
+    links: document.querySelectorAll('a[href]').length,
+    images: imgs.length,
+    imagesBroken: imgs.filter(function (i) { return i.complete && i.naturalWidth === 0; }).length,
+    documentHeight: document.body.scrollHeight
+  };
+})()`;
+
+/**
+ * Scroll a page end to end so lazy images load and scroll-triggered reveals
+ * fire, then return to the top and settle deterministically.
+ *
+ * Both the original and the export need this, or the comparison measures
+ * "whatever happened to be above the fold" on each.
+ *
+ * The final step drives every pending animation and transition to completion
+ * rather than sleeping. Reveal transitions run for 0.7s while an earlier
+ * version of this waited 150ms, so the probe measured elements mid-fade and
+ * reported the export as having lost 80% of its text — a pure timing artifact.
+ * Waiting longer would only have made the flake rarer; finishing the animations
+ * removes it. Infinite effects (the ticker) are skipped, since finish() throws
+ * on them and they never gate visibility.
+ */
+export const SETTLE_SCRIPT = `(async function () {
+  var step = Math.max(200, Math.floor(window.innerHeight * 0.8));
+  for (var y = 0; y < document.body.scrollHeight; y += step) {
+    window.scrollTo(0, y);
+    await new Promise(function (r) { setTimeout(r, 60); });
+  }
+  window.scrollTo(0, 0);
+
+  // Let any observer callbacks queued by that scroll actually run.
+  await new Promise(function (r) { requestAnimationFrame(function () { setTimeout(r, 120); }); });
+
+  document.getAnimations().forEach(function (a) {
+    try {
+      var t = a.effect && a.effect.getTiming ? a.effect.getTiming() : null;
+      if (t && t.iterations === Infinity) return;
+      a.finish();
+    } catch (e) { /* non-finishable effect */ }
+  });
+
+  await new Promise(function (r) { requestAnimationFrame(function () { r(null); }); });
+  return document.body.scrollHeight;
+})()`;
+
+export interface ContentProbe {
+  visibleText: string;
+  visibleTextChars: number;
+  visibleTextWords: number;
+  headings: string[];
+  links: number;
+  images: number;
+  imagesBroken: number;
+  documentHeight: number;
+}
+
 /** Format one viewport's result for terminal output. */
 export function formatVerifyResult(r: VerifyResult): string {
   const mark = r.pass ? 'PASS' : 'FAIL';

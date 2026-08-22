@@ -86,10 +86,21 @@ Options
       --json             Print the report as JSON
   -h, --help             Show this help
 
+Verify an export against the live original
+  unframer verify <original-url> --export <dir> [options]
+
+      --export <dir>     Export directory to check (default: out)
+      --routes a,b       Routes to check (default: every page in the export)
+      --viewports w,w    Widths to check (default: 1512,900,390)
+      --diff-dir <dir>   Where to write diff images (default: verify-diffs)
+      --no-diff          Skip writing diff images
+      --json             Print the full report as JSON
+
 Examples
   unframer https://your-site.framer.website/ --out dist
   unframer https://your-site.framer.website/ --base-url https://example.com
   unframer page.html --single --out dist
+  unframer verify https://your-site.framer.website/ --export dist
 `;
 
 function fmtBytes(n: number): string {
@@ -251,8 +262,149 @@ async function runSite(args: Args): Promise<void> {
   if (report.pagesExported === 0) process.exit(3);
 }
 
+/** Derive routes from the export itself by finding every index.html. */
+async function routesFromExport(dir: string): Promise<string[]> {
+  const { readdir } = await import('node:fs/promises');
+  const routes: string[] = [];
+
+  async function walk(current: string, prefix: string): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (entry.name === 'assets') continue;
+        await walk(join(current, entry.name), `${prefix}/${entry.name}`);
+      } else if (entry.name === 'index.html') {
+        routes.push(prefix === '' ? '/' : prefix);
+      }
+    }
+  }
+
+  await walk(resolve(dir), '');
+  return routes.sort((a, b) => (a === '/' ? -1 : b === '/' ? 1 : a.localeCompare(b)));
+}
+
+async function runVerify(argv: string[]): Promise<void> {
+  const { verifyExport, DEFAULT_VIEWPORTS } = await import('./verify-runner.js');
+  const { validateHtmlFiles } = await import('./validate-html.js');
+
+  let originalUrl: string | undefined;
+  let exportDir = 'out';
+  let routes: string[] | undefined;
+  let viewports = DEFAULT_VIEWPORTS;
+  let diffDir: string | undefined = 'verify-diffs';
+  let json = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--export' || a === '-e') exportDir = argv[++i] ?? 'out';
+    else if (a === '--routes') routes = (argv[++i] ?? '').split(',').filter(Boolean);
+    else if (a === '--viewports') {
+      viewports = (argv[++i] ?? '').split(',').map(Number).filter((n) => n > 0);
+    } else if (a === '--diff-dir') diffDir = argv[++i];
+    else if (a === '--no-diff') diffDir = undefined;
+    else if (a === '--json') json = true;
+    else if (!a.startsWith('-')) originalUrl = a;
+  }
+
+  if (!originalUrl) {
+    console.error('  Usage: unframer verify <original-url> --export <dir>');
+    process.exit(1);
+  }
+
+  const resolvedRoutes = routes?.length ? routes : await routesFromExport(exportDir);
+  console.log(`  Verifying ${resolvedRoutes.length} route(s) against ${originalUrl}`);
+
+  const report = await verifyExport({
+    originalUrl,
+    exportDir,
+    routes: resolvedRoutes,
+    viewports,
+    diffDir,
+    onProgress: (m) => { if (!json) console.log(m); },
+  });
+
+  // HTML validation, measured against the original rather than in absolute
+  // terms: Framer's own markup carries issues we neither caused nor can fix,
+  // and failing on those would be noise. Only what the export *introduced*
+  // counts.
+  const { readFile } = await import('node:fs/promises');
+  const { validateAgainstBaseline } = await import('./validate-html.js');
+
+  const introduced: Awaited<ReturnType<typeof validateAgainstBaseline>>['introduced'] = [];
+  let preExistingCount = 0;
+
+  for (const route of resolvedRoutes) {
+    const file = join(resolve(exportDir), route === '/' ? 'index.html' : `${route.slice(1)}/index.html`);
+    try {
+      const exportedHtml = await readFile(file, 'utf8');
+      const res = await fetch(new URL(route, originalUrl).toString(), {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+      const originalHtml = await res.text();
+      const result = await validateAgainstBaseline(exportedHtml, originalHtml, route);
+      introduced.push(...result.introduced);
+      preExistingCount += result.preExisting.length;
+    } catch {
+      // A page we cannot re-fetch simply is not baselined.
+    }
+  }
+
+  const validation = {
+    structuralErrors: introduced,
+    advisory: [] as typeof introduced,
+    preExisting: preExistingCount,
+    pass: introduced.length === 0,
+  };
+
+  if (json) {
+    console.log(JSON.stringify({ ...report, validation }, null, 2));
+  } else {
+    console.log('');
+    console.log(report.pass && validation.pass ? '  VERIFICATION PASSED' : '  VERIFICATION FAILED');
+    console.log('  ' + '─'.repeat(52));
+    console.log(`  Routes            ${report.summary.routesPassed}/${report.summary.routesChecked} passed`);
+    console.log(`  Text retention    ${(report.summary.worstTextRetention * 100).toFixed(1)}% (worst)`);
+    console.log(`  Pixel difference  ${(report.summary.worstPixelDiff * 100).toFixed(2)}% (worst)`);
+    console.log('                    badge removal and parallax are expected contributors');
+    console.log(`  HTML structure    ${validation.structuralErrors.length} introduced, ${validation.preExisting} pre-existing in source`);
+
+    for (const route of report.routes) {
+      console.log('');
+      console.log(`  ${route.pass ? '✓' : '✗'} ${route.route}`);
+      if (route.error) console.log(`      ${route.error}`);
+      for (const v of route.viewports) {
+        console.log(
+          `      ${v.pass ? '✓' : '✗'} ${String(v.viewport).padStart(4)}px  ` +
+            `text ${(v.textRetention * 100).toFixed(1)}%  ` +
+            `pixels ${(v.pixelDiffRatio * 100).toFixed(2)}%  ` +
+            `${v.exported.visibleTextChars}/${v.original.visibleTextChars} chars`,
+        );
+        for (const f of v.failures) console.log(`           ! ${f}`);
+      }
+    }
+
+    if (validation.structuralErrors.length > 0) {
+      console.log('');
+      console.log('  HTML structural errors');
+      for (const e of validation.structuralErrors.slice(0, 10)) {
+        console.log(`      ${e.rule} at ${e.line}:${e.column} — ${e.message}`);
+      }
+    }
+    console.log('');
+  }
+
+  if (!report.pass || !validation.pass) process.exit(4);
+}
+
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+
+  if (rawArgs[0] === 'verify') {
+    await runVerify(rawArgs.slice(1));
+    return;
+  }
+
+  const args = parseArgs(rawArgs);
 
   if (args.help || !args.input) {
     console.log(HELP);

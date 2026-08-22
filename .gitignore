@@ -9,3 +9,6 @@ test/fixtures/*.html
 *.log
 .DS_Store
 Thumbs.db
+
+# Verification output
+verify-diffs/
