@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out*/
+out*.zip
 
 # Captured third-party pages used only as local test inputs.
 # See test/fixtures/README.md — the suite skips absent fixtures.
