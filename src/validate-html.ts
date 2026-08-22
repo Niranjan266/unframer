@@ -141,6 +141,10 @@ function makeValidator(): HtmlValidate {
       'void-style': 'off',
       'long-title': 'off',
       'no-trailing-whitespace': 'off',
+      // parse5 normalises a bare `crossorigin` to `crossorigin=""` on
+      // serialisation. The two are defined to mean the same thing, and avoiding
+      // it would mean writing our own serialiser — so it is noise, not a defect.
+      'attribute-empty-style': 'off',
     },
   });
 }

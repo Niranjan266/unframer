@@ -13,7 +13,7 @@
 
 import { createServer, type Server } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { join, extname, normalize, sep } from 'node:path';
+import { join, extname, normalize, resolve, sep } from 'node:path';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -52,7 +52,15 @@ export interface StaticServer {
  * normalisation is rejected rather than served, since the same traversal
  * sequences that `routeToFilePath` guards against can arrive over the wire.
  */
-export async function serveDirectory(root: string): Promise<StaticServer> {
+export async function serveDirectory(rootDir: string): Promise<StaticServer> {
+  // Normalise once, up front. The containment check below compares this against
+  // a `join()`ed path, and `join()` always emits platform separators — so a
+  // caller passing "C:/x/y" on Windows would never match "C:\x\y" and every
+  // request would 403. Callers that happened to pass an already-resolved path
+  // worked, which is exactly the kind of bug that hides until someone uses the
+  // function directly.
+  const root = resolve(rootDir);
+
   const server: Server = createServer(async (req, res) => {
     try {
       const rawPath = decodeURIComponent((req.url ?? '/').split('?')[0]);

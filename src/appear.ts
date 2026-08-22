@@ -24,6 +24,7 @@ import type { AnyNode } from 'domhandler';
 import type { AppearSpec, AppearState, AppearVariant, Breakpoint } from './types.js';
 import { toCssEasing, toCssDuration, toCssDelay } from './easing.js';
 import { DEFAULT_VARIANT, breakpointsForDefault, mediaQueryFor } from './breakpoints.js';
+import { splitTransform, composeTransform, settledTransform, BASE_TRANSFORM_VAR } from './transform.js';
 
 export const APPEAR_ATTR = 'data-framer-appear-id';
 
@@ -97,8 +98,13 @@ function compileVariant(
 
   const fromOpacity = opacityOf(initial, 1);
   const toOpacity = opacityOf(animate, 1);
-  const fromTransform = buildTransform(initial);
-  const toTransform = buildTransform(animate);
+
+  // Compose against the element's own layout transform. The JSON describes only
+  // motion, so emitting it raw would drop any percentage translate positioning
+  // the element depends on — shifting it by half its width for good.
+  const raw = (value: string) => (value === 'none' ? '' : value);
+  const fromTransform = composeTransform(raw(buildTransform(initial)));
+  const toTransform = composeTransform(raw(buildTransform(animate)));
 
   const keyframes =
     `@keyframes ${name}{` +
@@ -213,7 +219,7 @@ export function compileAppearCss(
   // Safety net: if motion is reduced, or if anything above failed to match,
   // never leave an element stuck at its invisible initial state.
   const guard = reducedMotion
-    ? `@media (prefers-reduced-motion:reduce){[${APPEAR_ATTR}]{animation:none!important;opacity:1!important;transform:none!important}}`
+    ? `@media (prefers-reduced-motion:reduce){[${APPEAR_ATTR}]{animation:none!important;opacity:1!important;transform:${settledTransform()}!important}}`
     : '';
 
   const css = [...keyframes, ...rules, guard].filter(Boolean).join('\n');
@@ -238,16 +244,26 @@ export function neutralizeInlineInitialState($: CheerioAPI): number {
     const style = $el.attr('style');
     if (!style) return;
 
-    const kept = style
+    const declarations = style
       .split(';')
       .map((d) => d.trim())
-      .filter(Boolean)
-      .filter((d) => {
-        const prop = d.slice(0, d.indexOf(':')).trim().toLowerCase();
-        return !INITIAL_STATE_PROPS.has(prop);
-      });
+      .filter(Boolean);
 
-    if (kept.length === style.split(';').filter((s) => s.trim()).length) return;
+    // The inline transform can mix positioning with the animation's start
+    // offset. Only the animated half may be discarded.
+    const transformDecl = declarations.find(
+      (d) => d.slice(0, d.indexOf(':')).trim().toLowerCase() === 'transform',
+    );
+    const layout = splitTransform(transformDecl?.slice(transformDecl.indexOf(':') + 1)).layout;
+
+    const kept = declarations.filter((d) => {
+      const prop = d.slice(0, d.indexOf(':')).trim().toLowerCase();
+      return !INITIAL_STATE_PROPS.has(prop);
+    });
+
+    if (layout) kept.push(`${BASE_TRANSFORM_VAR}:${layout}`);
+
+    if (kept.length === declarations.length) return;
 
     touched++;
     if (kept.length === 0) $el.removeAttr('style');
@@ -262,5 +278,7 @@ export function neutralizeInlineInitialState($: CheerioAPI): number {
  * left invisible. This drops the inline state and emits nothing else.
  */
 export function forceVisibleCss(): string {
-  return `[${APPEAR_ATTR}]{opacity:1!important;transform:none!important}`;
+  // Resolve to layout-only rather than `none`, for the same reason the reveal
+  // rules do: `none` strips centring off percentage-positioned elements.
+  return `[${APPEAR_ATTR}]{opacity:1!important;transform:${settledTransform()}!important}`;
 }

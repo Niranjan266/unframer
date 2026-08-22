@@ -25,6 +25,12 @@
 
 import type { CheerioAPI } from 'cheerio';
 import { APPEAR_ATTR } from './appear.js';
+import {
+  splitTransform,
+  composeTransform,
+  settledTransform,
+  BASE_TRANSFORM_VAR,
+} from './transform.js';
 
 /** Attribute marking an element the shim should reveal. */
 export const REVEAL_ATTR = 'data-uf-reveal';
@@ -100,14 +106,16 @@ export function extractScrollReveals($: CheerioAPI): RevealResult {
     const opacity = Number.parseFloat(rawOpacity);
     if (!Number.isFinite(opacity) || opacity >= HIDDEN_OPACITY_THRESHOLD) return;
 
+    // Separate positioning from motion. A percentage translate is how the
+    // element is placed, not something it animates away from, and resolving it
+    // to `none` on reveal shifts the element by half its own width.
+    const split = splitTransform(decls.get('transform'));
+
     const state: FromState = {
       opacity: rawOpacity,
-      transform: decls.get('transform'),
+      transform: split.animation || undefined,
       filter: decls.get('filter'),
     };
-
-    // A transform of "none" carries no motion; drop it so more elements share a group.
-    if (state.transform === 'none') state.transform = undefined;
     if (state.filter === 'none') state.filter = undefined;
 
     const signature = signatureOf(state);
@@ -119,6 +127,11 @@ export function extractScrollReveals($: CheerioAPI): RevealResult {
 
     // Remove the inline hidden state — CSS now owns it, gated behind .uf-js.
     for (const prop of HIDDEN_PROPS) decls.delete(prop);
+
+    // Keep this element's own layout transform in a custom property, so one
+    // shared rule can still honour each element's positioning.
+    if (split.layout) decls.set(BASE_TRANSFORM_VAR, split.layout);
+
     if (decls.size === 0) $el.removeAttr('style');
     else $el.attr('style', serializeStyle(decls));
 
@@ -145,17 +158,19 @@ function buildRevealCss(groups: Array<{ id: string; state: FromState }>): string
 
   for (const { id, state } of groups) {
     const decls = [`opacity:${state.opacity}`];
-    if (state.transform) decls.push(`transform:${state.transform}`);
+    // Compose against the element's own layout transform rather than replacing it.
+    if (state.transform) decls.push(`transform:${composeTransform(state.transform)}`);
     if (state.filter) decls.push(`filter:${state.filter}`);
     rules.push(
       `.uf-js [${REVEAL_ATTR}="${id}"]:not(.${REVEAL_VISIBLE_CLASS}){${decls.join(';')}}`,
     );
   }
 
-  // Revealed state, and the reduced-motion escape hatch.
+  // The settled state resolves to layout-only, NEVER to `none` — `none` is what
+  // strips centring off elements that were positioned with a percentage translate.
   rules.push(
-    `[${REVEAL_ATTR}].${REVEAL_VISIBLE_CLASS}{opacity:1;transform:none;filter:none}`,
-    `@media (prefers-reduced-motion:reduce){.uf-js [${REVEAL_ATTR}]{opacity:1!important;transform:none!important;filter:none!important;transition:none!important}}`,
+    `[${REVEAL_ATTR}].${REVEAL_VISIBLE_CLASS}{opacity:1;transform:${settledTransform()};filter:none}`,
+    `@media (prefers-reduced-motion:reduce){.uf-js [${REVEAL_ATTR}]{opacity:1!important;transform:${settledTransform()}!important;filter:none!important;transition:none!important}}`,
   );
 
   return rules.join('\n');

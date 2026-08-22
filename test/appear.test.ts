@@ -115,10 +115,20 @@ describe('compileAppearCss', () => {
     expect(css).toMatch(/animation:fx-abc123-default 0\.6s .* 1s both/);
   });
 
+  /**
+   * Transforms compose against `--uf-base` rather than replacing it. An element
+   * centred with `translate(-50%, -50%)` must keep that in both states —
+   * resolving the settled state to `none` shifts it by half its own width.
+   */
   it('animates from the initial opacity to fully visible', () => {
     const { css } = compileAppearCss(simple, BREAKPOINTS);
-    expect(css).toContain('from{opacity:0.001;transform:translateY(-20px)}');
-    expect(css).toContain('to{opacity:1;transform:none}');
+    expect(css).toContain('from{opacity:0.001;transform:var(--uf-base,) translateY(-20px)}');
+    expect(css).toContain('to{opacity:1;transform:var(--uf-base, none)}');
+  });
+
+  it('never resolves a settled transform to none', () => {
+    const { css } = compileAppearCss(simple, BREAKPOINTS);
+    expect(css).not.toContain('transform:none');
   });
 
   /**
