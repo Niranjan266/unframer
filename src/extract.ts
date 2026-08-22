@@ -133,11 +133,8 @@ export function extract(
   }
   const assets = inventoryAssets($);
 
-  if (opts.assetMode === 'offline') {
-    warnings.push(
-      'Offline asset mode is not implemented yet (phase 03); assets remain CDN-hotlinked.',
-    );
-  }
+  // Offline localisation happens in the multi-page orchestrator, which is the
+  // only layer that sees the whole site and can download each asset once.
 
   const report: ExtractReport = {
     isFramerSite: true,

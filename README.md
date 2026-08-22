@@ -2,7 +2,7 @@
 
 Converts a published Framer site into portable, framework-free HTML/CSS that runs on any static host.
 
-**Status: Phase 02 complete** — whole-site export with CDN-hotlinked assets.
+**Status: Phase 03 complete** — whole-site export, fully self-contained with `--offline`.
 
 ```bash
 npm install
@@ -22,7 +22,7 @@ Options
       --max-pages <n>    Page cap for discovery (default: 100)
       --max-depth <n>    Crawl depth (default: 3)
       --concurrency <n>  Parallel fetches (default: 4 — the CDN throttles)
-      --offline          Download assets locally (phase 03 — not yet implemented)
+      --offline          Download every asset for a fully portable package
       --no-animations    Skip animation compilation; force final visible state
       --json             Print the report as JSON
 ```
@@ -71,6 +71,25 @@ Links to pages *outside* the export are made absolute back to the original site 
 
 Pass `--base-url` to have `canonical` and `og:url` retargeted at your domain. Without it they are removed — left pointing at Framer, they would tell search engines your self-hosted copy is a duplicate.
 
+## Offline assets
+
+`--offline` downloads every image, font and media file once across the whole site and rewrites all references:
+
+```
+assets/images/   assets/fonts/   assets/media/   assets/files/
+```
+
+Verified on a live two-page site: **37/37 assets downloaded, zero off-host requests in the browser.**
+
+Four details carry most of the risk here:
+
+- **`srcset` is rewritten in full.** Framer ships several `?scale-down-to=` variants per image. Rewriting only `src` leaves the browser fetching the rest from the CDN, quietly defeating the whole point.
+- **Local names hash the full URL, query included.** Those variants share a basename, so hashing the pathname alone would collapse them into one file and silently lose resolutions.
+- **Paths are relative to the page, not the site root** — `../../assets/…` from `/blog/post` — for the same portability reason as links.
+- **Social preview images are the exception.** `og:image` and `twitter:image` are resolved by crawlers from outside the page and *must* be absolute, so they are only localised when `--base-url` is set. Without it they keep their CDN URL and you get a warning, because a working preview beats a relative path no crawler can resolve.
+
+Anything that fails to download keeps its original URL and is reported. A hotlinked asset still renders; a rewritten-but-missing one does not.
+
 ## The trap this project exists to avoid
 
 Framer writes each animated element's initial state inline:
@@ -108,7 +127,7 @@ Verified manually at 1512 / 1280 / 900 / 390 px against `framer-template`: zero 
 npm test
 ```
 
-105 tests: unit coverage of the compiler, easing, breakpoint, route and link logic, plus golden-file assertions against four real captured Framer pages.
+126 tests: unit coverage of the compiler, easing, breakpoint, route, link and asset-localisation logic, plus golden-file assertions against four real captured Framer pages.
 
 ## Roadmap
 
@@ -116,8 +135,8 @@ npm test
 |---|---|---|
 | 01 | Single-page export, strip pipeline, animation compiler | **done** |
 | 02 | Multi-page: sitemap/crawl discovery, link rewriting | **done** |
-| 03 | Offline assets: throttled downloader, `srcset` variants, fonts | next |
-| 04 | Interaction shim: scroll reveals, hover, tickers, accordions | |
+| 03 | Offline assets: throttled downloader, `srcset` variants, fonts | **done** |
+| 04 | Interaction shim: scroll reveals, hover, tickers, accordions | next |
 | 05 | Verification harness: Playwright, visual diff, W3C, Lighthouse | |
 | 06 | Product surface: queue, UI, packaging | |
 

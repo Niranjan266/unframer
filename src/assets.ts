@@ -11,6 +11,13 @@
 import type { CheerioAPI } from 'cheerio';
 import type { AssetRef } from './types.js';
 
+/**
+ * Meta tags whose `content` is an image URL. Social crawlers require these to
+ * be absolute, so they are localised differently from ordinary assets.
+ */
+export const META_IMAGE_SELECTOR =
+  'meta[property="og:image"], meta[property="og:image:secure_url"], meta[name="twitter:image"], meta[property="twitter:image"]';
+
 const FONT_RE = /\.(woff2?|ttf|otf|eot)(\?|$)/i;
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)(\?|$)/i;
 const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp|avif)(\?|$)/i;
@@ -70,6 +77,11 @@ export function inventoryAssets($: CheerioAPI): AssetRef[] {
   $('link[rel="icon"], link[rel="apple-touch-icon"], link[rel="stylesheet"]').each((_, el) =>
     add($(el).attr('href')),
   );
+
+  // Social preview images. Easy to miss because they live in meta content
+  // rather than a src, and leaving them behind means the export still phones
+  // home every time a link to it is shared.
+  $(META_IMAGE_SELECTOR).each((_, el) => add($(el).attr('content')));
 
   $('style').each((_, el) => {
     const css = $(el).html() ?? '';
